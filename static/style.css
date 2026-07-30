@@ -222,6 +222,10 @@ body {
   border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1rem;
   margin-bottom: 0.75rem;
 }
+/* Collapsed, a folder is just its one-line summary -- the open-state
+   padding (sized to comfortably frame the article list/subfolders inside)
+   otherwise reads as oversized whitespace around that single line. */
+.folder-group:not([open]) { padding: 0.5rem 1rem; }
 .folder-group .folder-group { margin: 0.75rem 0 0 1.25rem; }
 .folder-group > summary {
   display: flex; align-items: center; gap: 0.5rem; font-weight: 600; cursor: pointer; flex-wrap: wrap;
