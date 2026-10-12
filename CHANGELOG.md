@@ -19,7 +19,9 @@ use the section as the GitHub release notes.
   "Open original".
 - Folders start collapsed, and the library remembers which ones you opened.
   A folder that only holds one subfolder is shown as a single combined row.
-- The version and "Check for updates" moved into a ⋯ menu in the top bar.
+- The version is a pill next to the Lector name (linking to that release's
+  notes), with a GitHub button beside it; "Check for updates", the changelog
+  and the repo link are in a ⋯ menu in the top bar.
   On the server machine itself, the network address for opening Lector on
   your phone is now one slim line under the search box (and in that menu).
 

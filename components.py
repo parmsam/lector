@@ -21,9 +21,22 @@ from fasthtml.common import (
 
 from db import SORT_OPTIONS, DEFAULT_SORT
 from tts import VOICES, DEFAULT_VOICE, DEFAULT_SPEED
-from update_check import release_url
+from update_check import REPO, release_url
 
 APP_NAME = "Lector"
+REPO_URL = f"https://github.com/{REPO}"
+CHANGELOG_URL = f"{REPO_URL}/blob/main/CHANGELOG.md"
+# GitHub's mark (Octicons "mark-github", 16px), filled with currentColor so it
+# follows the theme.
+_GITHUB_ICON = NotStr(
+    '<svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" fill="currentColor">'
+    '<path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49'
+    '-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82'
+    '.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15'
+    '-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82'
+    ' 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48'
+    ' 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>'
+)
 SPEEDS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5]
 
 # Single source of truth is pyproject.toml's [project].version -- read once at
@@ -134,12 +147,23 @@ def _nav(lan_url: str | None = None):
             Hr(cls="popover-sep"),
         ]
     return Nav(
-        A(
-            Img(src=f"/static/favicon.svg?v={_STATIC_VERSION}", alt="", width="22", height="22", cls="brand-logo"),
-            Span(APP_NAME, cls="brand-name"),
-            href="/", cls="nav-link nav-brand",
+        Div(
+            A(
+                Img(src=f"/static/favicon.svg?v={_STATIC_VERSION}", alt="", width="22", height="22", cls="brand-logo"),
+                Span(APP_NAME, cls="brand-name"),
+                href="/", cls="nav-link nav-brand",
+            ),
+            A(
+                f"v{APP_VERSION}", href=release_url(APP_VERSION), cls="version-pill",
+                target="_blank", rel="noopener", title=f"What's new in v{APP_VERSION}",
+            ),
+            cls="nav-brand-group",
         ),
         A("+ Add", href="/add", cls="nav-link nav-add", title="Add an article"),
+        A(
+            _GITHUB_ICON, href=REPO_URL, cls="nav-icon-btn", target="_blank", rel="noopener",
+            title=f"{APP_NAME} on GitHub", aria_label=f"{APP_NAME} on GitHub",
+        ),
         Button(
             id="theme-toggle", cls="theme-toggle", type="button",
             title="Toggle light/dark theme", aria_label="Toggle light/dark theme",
@@ -149,6 +173,8 @@ def _nav(lan_url: str | None = None):
             *phone_items,
             Span(f"{APP_NAME} v{APP_VERSION}", cls="popover-label nav-menu-version"),
             A("Check for updates", href="#", id="check-update-link", cls="popover-item"),
+            A("Changelog", href=CHANGELOG_URL, target="_blank", rel="noopener", cls="popover-item"),
+            A("GitHub repository", href=REPO_URL, target="_blank", rel="noopener", cls="popover-item"),
             id="nav-menu", popover="auto", cls="popover-menu",
         ),
         cls="topnav",

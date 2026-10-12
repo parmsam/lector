@@ -88,8 +88,22 @@ body {
 }
 .topnav > :first-child { margin-right: auto; }
 .nav-link { color: var(--fg); text-decoration: none; font-weight: 600; }
-.nav-add { color: var(--accent); }
+.nav-add { color: var(--accent); white-space: nowrap; }
 .nav-brand { display: flex; align-items: center; gap: 0.45rem; font-size: 1.05rem; }
+.nav-brand-group { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.version-pill {
+  font-size: 0.75rem; font-family: ui-monospace, monospace; color: var(--fg-muted);
+  border: 1px solid var(--border); border-radius: 999px; padding: 0.05rem 0.5rem;
+  text-decoration: none; white-space: nowrap;
+}
+.version-pill:hover { color: var(--accent); border-color: var(--accent); }
+.nav-icon-btn {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 2.5rem; height: 2.5rem; border: 1px solid var(--border); border-radius: 8px; color: var(--fg);
+}
+.nav-icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+/* Tight phones: the GitHub link is also in the ⋯ menu. */
+@media (max-width: 420px) { .nav-icon-btn { display: none; } }
 .nav-menu-btn {
   background: none; border: 1px solid var(--border); border-radius: 8px;
   width: 2.5rem; height: 2.5rem; font-size: 1.1rem; font-weight: 700; line-height: 1;
