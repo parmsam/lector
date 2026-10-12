@@ -240,3 +240,22 @@ def test_table_interrupting_paragraph_is_split_out():
 def test_code_fence_comment_is_not_a_heading():
     doc = segment_document("```\n# not a heading\nx = 1\n```")
     assert [s.type for s in doc.segments] == ["code"]
+
+
+def test_empty_page_anchor_spans_are_removed():
+    doc = segment_document(
+        '# <span id="page-182-0"></span>Chapter Ten\n\n'
+        '<span id="page-183-0"></span>The flood begins here. It grows.'
+    )
+    assert [(s.type, s.text) for s in doc.segments] == [
+        ("heading", "Chapter Ten"),
+        ("paragraph", "The flood begins here."),
+        ("paragraph", "It grows."),
+    ]
+    assert doc.toc[0].text == "Chapter Ten"
+    assert all("<span" not in s.raw_text for s in doc.segments)
+
+
+def test_html_blocks_other_than_empty_anchors_are_untouched():
+    doc = segment_document("<details><summary>Answer</summary>\nHidden.\n</details>\n\nAfter.")
+    assert [s.text for s in doc.segments] == ["After."]

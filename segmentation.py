@@ -76,6 +76,20 @@ def strip_markdown(text: str) -> str:
     return text.strip()
 
 
+# Empty HTML anchor elements -- marker-pdf emits one per page break
+# (`<span id="page-182-0"></span>`), often at the very start of a heading or
+# paragraph. They carry no text, but left in place they showed up as literal
+# tags (raw HTML is escaped, see render.py), leaked into the table of
+# contents and the spoken text, and a block *starting* with one was taken
+# for a raw-HTML block and skipped entirely. Only empty <span>/<a> with
+# attributes are removed; any other HTML is left as-is.
+_EMPTY_ANCHOR_RE = re.compile(r"<(span|a)\b[^<>]*>\s*</\1>", re.IGNORECASE)
+
+
+def strip_empty_anchors(markdown: str) -> str:
+    return _EMPTY_ANCHOR_RE.sub("", markdown)
+
+
 def has_speakable_content(text: str) -> bool:
     """True if text has at least one letter or digit -- filters out lines that are
     pure punctuation/underscores (e.g. signature-line placeholders like "____")."""
@@ -275,6 +289,7 @@ def segment_document(markdown: str) -> SegmentedDocument:
     # point content is saved) means content already stored with CRLF renders
     # correctly on next view too, with no migration needed.
     markdown = markdown.replace("\r\n", "\n").replace("\r", "\n")
+    markdown = strip_empty_anchors(markdown)
     raw_blocks = re.split(r"\n{2,}", markdown)
     block_index = 0
 
