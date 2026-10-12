@@ -10,6 +10,8 @@ use the section as the GitHub release notes.
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-10-12
+
 ### Changed
 - PDF import no longer runs OCR. marker-pdf 2.0's OCR needs a separate
   `llama-server` (llama.cpp) install plus a ~1.5GB model download, so
@@ -105,7 +107,8 @@ First tagged release of the rewrite as a network-accessible web app.
 - Mobile support: Add to Home Screen, Android/iOS share target for adding
   links, light/dark theme.
 
-[Unreleased]: https://github.com/parmsam/markdown-reader2/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/parmsam/markdown-reader2/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/parmsam/markdown-reader2/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/parmsam/markdown-reader2/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/parmsam/markdown-reader2/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/parmsam/markdown-reader2/compare/v1.0.0...v1.1.0
