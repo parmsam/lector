@@ -118,6 +118,22 @@ it to your home screen and launch it full-screen, no browser chrome. Sharing
 a link from any other app straight into your library works on both
 platforms, but gets there differently:
 
+**Before installing, give the app a stable address.** A home screen install
+(and Android's share target) is tied to the exact address you installed it
+from. If your Mac's LAN IP later changes, the icon opens a dead address and
+you have to delete it and add it again. Your library is safe either way:
+it lives on the server. Two fixes:
+
+- **Reserve the IP on your router** (usually called "DHCP reservation" or
+  "static lease"): tie your Mac's MAC address to a fixed IP. This works for
+  every device and needs no other changes.
+- **Install from the Mac's Bonjour name** instead of the IP. `start.sh`
+  prints it as the `mDNS:` URL (`http://<LocalHostName>.local:5001`, where
+  `scutil --get LocalHostName` shows the name). iOS resolves `.local` names
+  reliably; Android support depends on the version and maker. macOS can
+  rename the host (e.g. `...-2.local`) if another device claims the same
+  name, which breaks the install the same way an IP change does.
+
 ### Android
 
 Android's Chrome supports the [Web Share Target
@@ -151,9 +167,10 @@ equivalent is a small Shortcut that opens `/add?url=...&autofetch=1`
    hands it a URL or a plain text string).
 3. Add action **URL Encode** on that result.
 4. Add action **Text**, and set its content to
-   `http://<your-mac's-LAN-IP>:5001/add?url=` followed by the URL-encoded
-   result from step 3, followed by `&autofetch=1`. (Find your LAN IP from
-   `start.sh`'s printed output, or `ipconfig getifaddr en0`.)
+   `http://<your-mac's-address>:5001/add?url=` followed by the URL-encoded
+   result from step 3, followed by `&autofetch=1`. (Use the `mDNS:` or `LAN:`
+   address from `start.sh`'s printed output -- see the stable-address note
+   above.)
 5. Add action **Open URLs**, using that text.
 6. Tap the shortcut's name at the top, rename it (e.g. "Add to Reader"), tap
    the settings/info icon, turn on **Show in Share Sheet**, and set it to

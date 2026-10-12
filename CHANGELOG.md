@@ -10,6 +10,13 @@ use the section as the GitHub release notes.
 
 ## [Unreleased]
 
+### Added
+- The library page's "open on your phone" line and ⋯ menu, and `start.sh`'s
+  output, now also show the Mac's Bonjour URL (`http://<name>.local:5001`),
+  which keeps working when the LAN IP changes. The README now explains that
+  home screen installs are tied to the address they were installed from, and
+  how to keep that address stable.
+
 ### Changed
 - The project is renamed from `markdown-reader2` to `lector` to match the
   app's name: the GitHub repo is now

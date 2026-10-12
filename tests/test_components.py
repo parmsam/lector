@@ -76,3 +76,15 @@ def test_lan_address_shown_as_link_only_when_given():
     assert '<a href="http://192.0.2.10:5001" class="lan-url-link">http://192.0.2.10:5001</a>' in with_lan
     without = to_xml(comp.library_page([a], stats={1: comp.ArticleStats(minutes=1)}))
     assert 'class="lan-line"' not in without
+
+
+def test_mdns_address_shown_first_alongside_ip():
+    a = _article()
+    html = to_xml(comp.library_page(
+        [a], lan_url="http://192.0.2.10:5001", mdns_url="http://host.local:5001",
+        stats={1: comp.ArticleStats(minutes=1)},
+    ))
+    line = html[html.index('class="lan-line"'):]
+    assert 'href="http://host.local:5001"' in line
+    assert line.index("host.local") < line.index("192.0.2.10")
+    assert 'data-url="http://host.local:5001"' in html

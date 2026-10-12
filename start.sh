@@ -16,6 +16,9 @@ fi
 
 PORT="${PORT:-5001}"
 LAN_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)
+# Bonjour name (e.g. Sams-MacBook-Pro.local) -- unlike the DHCP-assigned IP it
+# survives IP changes, so it's the better address for a home screen install.
+LOCAL_HOST=$(scutil --get LocalHostName 2>/dev/null || true)
 
 # OSC 8 makes the URL a real clickable hyperlink in terminals that support it
 # (iTerm2, Terminal.app, kitty, VS Code, etc.) instead of relying on a
@@ -49,6 +52,9 @@ fi
 echo "  Local:  $(hyperlink "http://localhost:$PORT")"
 if [ -n "$LAN_IP" ]; then
   echo "  LAN:    $(hyperlink "http://$LAN_IP:$PORT")"
+fi
+if [ -n "$LOCAL_HOST" ]; then
+  echo "  mDNS:   $(hyperlink "http://$LOCAL_HOST.local:$PORT")"
 fi
 
 # Only remove the pid file once the server process has actually exited --

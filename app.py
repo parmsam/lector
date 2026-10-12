@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 import socket
+import subprocess
 import tempfile
 import threading
 from pathlib import Path
@@ -57,6 +58,21 @@ def _get_lan_ip() -> str | None:
         return None
     finally:
         s.close()
+
+
+def _get_mdns_host() -> str | None:
+    """This Mac's Bonjour name (e.g. "Sams-MacBook-Pro.local"). Unlike the
+    DHCP-assigned IP it survives IP changes, so it's the address to use for
+    a home screen install. Read live (not cached) since macOS can rename the
+    host on a name conflict."""
+    try:
+        out = subprocess.run(
+            ["scutil", "--get", "LocalHostName"], capture_output=True, text=True, timeout=2,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    name = out.stdout.strip()
+    return f"{name}.local" if out.returncode == 0 and name else None
 
 
 app = FastHTML(pico=False, on_startup=_startup)
@@ -144,14 +160,17 @@ def _library_stats(articles: list) -> dict[int, comp.ArticleStats]:
 def get_library(request: Request, notice: str = "", sort: str = db.DEFAULT_SORT):
     # Only worth showing when browsing from the same machine -- if you're
     # already on another device's browser you're already using the LAN URL.
-    lan_url = None
+    lan_url = mdns_url = None
     if request.client and request.client.host in ("127.0.0.1", "::1"):
         lan_ip = _get_lan_ip()
         if lan_ip:
             lan_url = f"http://{lan_ip}:{PORT}"
+        mdns_host = _get_mdns_host()
+        if mdns_host:
+            mdns_url = f"http://{mdns_host}:{PORT}"
     articles = db.list_articles(DB, sort=sort)
     return comp.library_page(
-        articles, lan_url=lan_url, notice=notice, sort=sort,
+        articles, lan_url=lan_url, mdns_url=mdns_url, notice=notice, sort=sort,
         stats=_library_stats(articles),
         folder_sort_overrides=db.get_folder_sort_overrides(DB),
         update_available=update_check.get_available_update(comp.APP_VERSION),

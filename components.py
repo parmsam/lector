@@ -130,22 +130,32 @@ def _head(title: str):
     )
 
 
-def _nav(lan_url: str | None = None):
+def _nav(lan_url: str | None = None, mdns_url: str | None = None):
     """Top bar: brand, Add, theme toggle, and a ⋯ menu holding the
     rarely-needed bits (version/update check, and -- on the library page,
-    browsing from this machine -- the LAN address to open on a phone) so
+    browsing from this machine -- the LAN addresses to open on a phone) so
     they don't compete with the content."""
     phone_items = []
-    if lan_url:
-        phone_items = [
+    if mdns_url:
+        phone_items += [
             Div(
-                Span("Open on your phone", cls="popover-label"),
+                Span("Open on your phone (stable address)", cls="popover-label"),
+                A(mdns_url, href=mdns_url, cls="lan-url-link"),
+                cls="popover-field",
+            ),
+            Button("Copy address", type="button", cls="popover-item copy-lan-url", data_url=mdns_url),
+        ]
+    if lan_url:
+        phone_items += [
+            Div(
+                Span("Or by IP (changes if the router reassigns it)" if mdns_url else "Open on your phone", cls="popover-label"),
                 A(lan_url, href=lan_url, cls="lan-url-link"),
                 cls="popover-field",
             ),
-            Button("Copy address", type="button", cls="popover-item copy-lan-url", data_url=lan_url),
-            Hr(cls="popover-sep"),
+            Button("Copy IP address" if mdns_url else "Copy address", type="button", cls="popover-item copy-lan-url", data_url=lan_url),
         ]
+    if phone_items:
+        phone_items.append(Hr(cls="popover-sep"))
     return Nav(
         Div(
             A(
@@ -342,7 +352,7 @@ def _sort_form(sort: str) -> Form:
 
 
 def library_page(
-    articles: list, lan_url: str | None = None, notice: str | None = None,
+    articles: list, lan_url: str | None = None, mdns_url: str | None = None, notice: str | None = None,
     sort: str = DEFAULT_SORT, folder_sort_overrides: dict | None = None,
     update_available: str | None = None, stats: dict | None = None,
 ) -> Html:
@@ -430,10 +440,10 @@ def library_page(
     return Html(
         _head(f"Library — {APP_NAME}"),
         Body(
-            _nav(lan_url),
+            _nav(lan_url, mdns_url),
             Main(
                 H1("Library", cls="visually-hidden"),
-                update_banner, notice_banner, toolbar, _lan_line(lan_url), body,
+                update_banner, notice_banner, toolbar, _lan_line(lan_url, mdns_url), body,
                 Div(
                     Div("Drop files to add them", cls="drop-overlay-title"),
                     Div("", cls="drop-overlay-target"),
@@ -477,18 +487,29 @@ def _fmt_date(iso: str | None) -> str:
     return d.strftime(fmt)
 
 
-def _lan_line(lan_url: str | None):
-    """One slim line with the address other devices on the network can use.
-    app.py only passes lan_url when you're browsing on the server machine
-    itself -- elsewhere you're already on that address."""
-    if not lan_url:
+def _lan_line(lan_url: str | None, mdns_url: str | None = None):
+    """One slim line with the addresses other devices on the network can use.
+    app.py only passes them when you're browsing on the server machine
+    itself -- elsewhere you're already on one. The .local (Bonjour) address
+    comes first: a home screen install is tied to the address it was made
+    from, and unlike the IP it survives the router reassigning addresses."""
+    if not (lan_url or mdns_url):
         return ""
-    return Div(
-        Span("Open on your phone or another computer:"),
-        A(lan_url, href=lan_url, cls="lan-url-link"),
-        Button("Copy", type="button", cls="link-btn copy-lan-url", data_url=lan_url),
-        cls="lan-line",
-    )
+    parts = [Span("Open on your phone or another computer:")]
+    if mdns_url:
+        parts += [
+            A(mdns_url, href=mdns_url, cls="lan-url-link",
+              title="Stable address: keeps working if your IP changes. Best for a home screen install."),
+            Button("Copy", type="button", cls="link-btn copy-lan-url", data_url=mdns_url),
+        ]
+    if lan_url:
+        if mdns_url:
+            parts.append(Span("or"))
+        parts += [
+            A(lan_url, href=lan_url, cls="lan-url-link"),
+            Button("Copy", type="button", cls="link-btn copy-lan-url", data_url=lan_url),
+        ]
+    return Div(*parts, cls="lan-line")
 
 
 def _reader_source(a):
