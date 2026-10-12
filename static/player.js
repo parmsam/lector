@@ -246,6 +246,40 @@
     nowPlayingEl.innerHTML = el ? el.innerHTML : "Nothing playing yet";
   }
 
+  // ---- table of contents follows playback: highlight the entry for the
+  // section being read (the last heading at or before the current segment),
+  // keep it visible inside the sidebar's own scroll area, and name it next
+  // to "Contents" for when the list is collapsed (phones). ----
+  const tocEntries = Array.from(document.querySelectorAll(".toc-entry[data-jump]"))
+    .map((el) => ({ el, seg: parseInt(el.getAttribute("data-jump"), 10) }));
+  const tocCurrentEl = document.querySelector(".toc-current");
+  let activeTocEl = null;
+
+  function updateTocActive(index) {
+    let match = null;
+    if (index >= 0) {
+      for (const entry of tocEntries) {
+        if (entry.seg <= index) match = entry.el; else break;
+      }
+    }
+    if (match === activeTocEl) return;
+    activeTocEl?.classList.remove("toc-active");
+    activeTocEl?.removeAttribute("aria-current");
+    activeTocEl = match;
+    if (tocCurrentEl) tocCurrentEl.textContent = match ? match.textContent : "";
+    if (!match) return;
+    match.classList.add("toc-active");
+    match.setAttribute("aria-current", "location");
+    // Scroll only the sidebar (not the page) when the entry is out of view.
+    const box = tocDetails;
+    if (box && box.open && box.scrollHeight > box.clientHeight) {
+      const top = match.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+      if (top < box.scrollTop || top + match.offsetHeight > box.scrollTop + box.clientHeight) {
+        box.scrollTo({ top: top - box.clientHeight / 3, behavior: "smooth" });
+      }
+    }
+  }
+
   function setActiveSegment(index) {
     if (currentSegment >= 0 && segEls[currentSegment]) {
       segEls[currentSegment].classList.remove("sentence-active");
@@ -261,6 +295,7 @@
     }
     updateDocSeekUI(0);
     syncNowPlaying();
+    updateTocActive(index);
     postProgress();
   }
 
@@ -407,7 +442,13 @@
       return;
     }
 
-    if (!cacheMap.has(index)) await fetchSegment(index);
+    if (!cacheMap.has(index)) {
+      // Audio for this sentence is still being generated: show it, so the
+      // pause before playback doesn't look like a hang.
+      segEls[index]?.classList.add("seg-loading");
+      await fetchSegment(index);
+      segEls[index]?.classList.remove("seg-loading");
+    }
     if (gen !== myGen) return;
     const entry = cacheMap.get(index);
     if (!entry) {
@@ -595,7 +636,22 @@
     }, 300);
   }
 
+  // ---- one-time "tap any sentence" tip (per-browser, localStorage) ----
+  const TAP_TIP_KEY = "lector.tapTipSeen";
+  const tapTip = document.getElementById("tap-tip");
+  function dismissTapTip() {
+    if (tapTip) tapTip.hidden = true;
+    try { localStorage.setItem(TAP_TIP_KEY, "1"); } catch (err) { /* ignore */ }
+  }
+  if (tapTip) {
+    let seen = false;
+    try { seen = localStorage.getItem(TAP_TIP_KEY) === "1"; } catch (err) { /* ignore */ }
+    tapTip.hidden = seen || totalSegments === 0;
+    document.getElementById("btn-dismiss-tap-tip")?.addEventListener("click", dismissTapTip);
+  }
+
   document.addEventListener("click", (e) => {
+    if (e.target.closest("#doc-body [data-seg]")) dismissTapTip();
     const jumpEl = e.target.closest("[data-jump]");
     if (jumpEl) {
       jumpTo(parseInt(jumpEl.getAttribute("data-jump"), 10));

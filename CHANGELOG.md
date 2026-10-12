@@ -33,6 +33,14 @@ use the section as the GitHub release notes.
   you type. Press `/` to jump to it and `Esc` to clear it.
 - Drag and drop files onto the library to add them, or drop them onto a
   folder to add them there.
+- The table of contents follows playback: the section being read is
+  highlighted (and kept in view in a long list). On phones, where the
+  contents start collapsed, the current section is named next to
+  "Contents".
+- Sentences get a light tint on hover to show you can click them to start
+  reading there, and first-time readers see a one-line tip saying so.
+- A sentence pulses while its audio is still being generated, so the wait
+  doesn't look like a hang.
 
 ### Fixed
 - "Recently added" sorting showed the oldest articles first.

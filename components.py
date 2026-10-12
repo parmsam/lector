@@ -749,7 +749,12 @@ def toc_sidebar(toc: list):
     # flex` on the <details> itself only flexes [summary, that one wrapper]
     # -- the buttons inside it then fell back to native inline-block flow
     # and packed side-by-side like wrapped text instead of stacking.
-    return Details(Summary("Contents"), Div(*items, cls="toc-list"), open=True, cls="toc-sidebar")
+    # .toc-current shows the section being read next to "Contents" -- mainly
+    # for phones, where the list starts collapsed (player.js fills it in).
+    return Details(
+        Summary("Contents", Span("", cls="toc-current")),
+        Div(*items, cls="toc-list"), open=True, cls="toc-sidebar",
+    )
 
 
 def player_bar(voice: str, speed: float) -> Div:
@@ -851,6 +856,13 @@ def article_page(article, body_html: str, toc: list) -> Html:
                         cls="reader-header",
                     ),
                     resume_banner,
+                    # One-time hint; player.js shows it until the first
+                    # tap-to-play or a dismiss (remembered per browser).
+                    Div(
+                        Span("Tip: tap any sentence to start reading from there."),
+                        Button("Got it", type="button", id="btn-dismiss-tap-tip", cls="link-btn"),
+                        id="tap-tip", cls="tap-tip", hidden=True,
+                    ),
                     Div(
                         Div("Nothing playing yet", id="now-playing-text"),
                         id="now-playing-panel",
