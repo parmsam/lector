@@ -194,6 +194,16 @@ class TTSResult:
     word_timings: list[dict]
 
 
+def _cache_matches(meta: dict | None, text: str) -> bool:
+    """The cache key is (content_hash, segment_index), so an unchanged article
+    still maps index N to whatever segmentation.py produced when it was cached.
+    A segmenter change can renumber segments without changing the content
+    hash; checking the stored text makes that a cache miss rather than
+    playing another sentence's audio. Entries written before "text" was
+    stored are treated as misses too."""
+    return meta is not None and meta.get("text") == text
+
+
 def get_or_generate(content_hash: str, segment_index: int, text: str, voice: str, speed: float) -> TTSResult | None:
     """Cache-aware entrypoint: the only code path that ever calls Kokoro or writes
     cache files. Returns None if the segment could not be spoken at all (e.g. it
@@ -202,7 +212,7 @@ def get_or_generate(content_hash: str, segment_index: int, text: str, voice: str
 
     if wav_path.exists():
         meta = cache.read_cached_timings(json_path)
-        if meta is not None:
+        if _cache_matches(meta, text):
             return TTSResult(wav_bytes=wav_path.read_bytes(), duration=meta["duration"], word_timings=meta["word_timings"])
 
     with _generate_lock:
@@ -210,7 +220,7 @@ def get_or_generate(content_hash: str, segment_index: int, text: str, voice: str
         # this exact segment while we were waiting.
         if wav_path.exists():
             meta = cache.read_cached_timings(json_path)
-            if meta is not None:
+            if _cache_matches(meta, text):
                 return TTSResult(wav_bytes=wav_path.read_bytes(), duration=meta["duration"], word_timings=meta["word_timings"])
 
         model = get_model()
@@ -222,6 +232,6 @@ def get_or_generate(content_hash: str, segment_index: int, text: str, voice: str
         duration = len(audio) / SAMPLE_RATE
         wav_bytes = _audio_to_wav_bytes(audio, SAMPLE_RATE)
         word_timings = estimate_word_timings(padded, duration)
-        cache.write_cache(wav_path, json_path, wav_bytes, {"duration": round(duration, 3), "word_timings": word_timings})
+        cache.write_cache(wav_path, json_path, wav_bytes, {"duration": round(duration, 3), "word_timings": word_timings, "text": text})
 
         return TTSResult(wav_bytes=wav_bytes, duration=duration, word_timings=word_timings)

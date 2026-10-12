@@ -194,3 +194,49 @@ def test_list_that_already_starts_the_block_is_unaffected():
     # across several block_index groups, each rendering as its own <ul>.
     doc = segment_document("- one\n- two\n- three")
     assert len({s.block_index for s in doc.segments}) == 1
+
+
+def test_heading_with_body_directly_below_is_split_out():
+    doc = segment_document("## Overview\n**What it is:** The claim. No villain here.")
+    assert [(s.type, s.text) for s in doc.segments] == [
+        ("heading", "Overview"),
+        ("paragraph", "What it is: The claim."),
+        ("paragraph", "No villain here."),
+    ]
+    assert [(t.text, t.segment_index) for t in doc.toc] == [("Overview", 0)]
+
+
+def test_heading_is_split_by_sentence_with_one_toc_entry():
+    doc = segment_document("# Can AI dent Eroom's Law? Large models in drug discovery")
+    assert [(s.type, s.level, s.text) for s in doc.segments] == [
+        ("heading", 1, "Can AI dent Eroom's Law?"),
+        ("heading", 1, "Large models in drug discovery"),
+    ]
+    assert len(doc.toc) == 1
+    assert doc.toc[0].text == "Can AI dent Eroom's Law? Large models in drug discovery"
+    assert doc.toc[0].segment_index == 0
+
+
+def test_bold_sentence_boundaries_keep_raw_formatting():
+    doc = segment_document("First one. **Second bold one.** Third one.")
+    assert [s.raw_text for s in doc.segments] == ["First one.", "**Second bold one.**", "Third one."]
+
+
+def test_table_rows_become_segments():
+    doc = segment_document("## Key terms\n| Term | Meaning |\n|---|---|\n| Drift | Slow change. Really. |\n\nAfter.")
+    assert [(s.type, s.text) for s in doc.segments] == [
+        ("heading", "Key terms"),
+        ("tablerow", "Term, Meaning"),
+        ("tablerow", "Drift, Slow change. Really."),
+        ("paragraph", "After."),
+    ]
+
+
+def test_table_interrupting_paragraph_is_split_out():
+    doc = segment_document("Intro.\n| a | b |\n| - | - |\n| 1 | 2 |\nOutro.")
+    assert [s.type for s in doc.segments] == ["paragraph", "tablerow", "tablerow", "paragraph"]
+
+
+def test_code_fence_comment_is_not_a_heading():
+    doc = segment_document("```\n# not a heading\nx = 1\n```")
+    assert [s.type for s in doc.segments] == ["code"]

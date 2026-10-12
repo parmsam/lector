@@ -90,7 +90,7 @@ stay in sync:
 1. `segmentation.py`'s `segment_document()` -- where the type is assigned.
 2. `render.py`'s `render_document()` -- how that type is displayed.
 3. `static/player.js` -- whether that type gets word-level highlighting
-   (currently paragraph only) and whether it's skipped during playback
+   (currently paragraph and heading) and whether it's skipped during playback
    (currently code only).
 
 ## Known constraints (see LEARNINGS.md for the "why")
@@ -98,8 +98,13 @@ stay in sync:
 - Word timings are estimated (character-length weighted), not real forced
   alignment -- Kokoro/mlx-audio doesn't expose per-word timestamps.
 - Segmentation is regex/heuristic-based, ported from v1, not a real CommonMark
-  AST walk -- unusual constructs (tables, nested lists in blockquotes) may
-  segment imperfectly.
+  AST walk -- unusual constructs (nested lists in blockquotes, tables inside
+  lists) may segment imperfectly. GFM tables are supported: one `tablerow`
+  segment per row, rendered by `render.py` as a real `<table>`.
+- The audio cache key is (content_hash, segment_index), so a segmenter change
+  can renumber an unchanged article's segments. `tts.get_or_generate` stores
+  each segment's text in its cache JSON and treats a mismatch as a miss --
+  keep that check if you touch the cache format.
 - All Kokoro generation is serialized behind one global `threading.Lock` in
   `tts.py` -- fine for single-user LAN use, would need rethinking for
   multi-user concurrent load.

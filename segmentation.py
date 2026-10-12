@@ -24,7 +24,7 @@ class Segment:
     index: int
     text: str          # stripped plain text, sent to TTS
     raw_text: str       # original markdown source for this segment (for display)
-    type: str           # "heading" | "paragraph" | "listitem" | "blockquote" | "code"
+    type: str           # "heading" | "paragraph" | "listitem" | "blockquote" | "code" | "tablerow"
     level: int | None   # heading level 1-6, else None
     block_index: int    # which top-level block (split on blank lines) this came from
     list_depth: int | None = None  # nesting depth for "listitem" segments (0 = top level), else None
@@ -106,10 +106,49 @@ def _sentence_pairs(raw_block: str, plain_whole: str) -> list[tuple[str, str]]:
     word-highlighting actually use), which is always computed the
     old/proven way regardless."""
     plain_sentences = split_sentences(plain_whole)
-    raw_sentences = split_sentences(raw_block)
+    raw_sentences = _split_raw_sentences(raw_block)
     if len(plain_sentences) != len(raw_sentences):
         raw_sentences = plain_sentences
+    else:
+        raw_sentences = _balance_emphasis(raw_sentences)
     return list(zip(plain_sentences, raw_sentences))
+
+
+# Same boundary rule as split_sentences(), but tolerant of an emphasis
+# delimiter sitting between the punctuation and the whitespace ("...end.**
+# Next") or between the whitespace and the capital ("end. **Next"). Without
+# this, a sentence that ends or starts in bold splits in the plain text but
+# not the raw text, the counts disagree, and the whole block silently loses
+# its formatting (_sentence_pairs' fallback). Fixed-width lookbehinds only
+# (Python's re can't do variable-width), hence the alternation.
+_RAW_SENTENCE_BOUNDARY_RE = re.compile(
+    r"(?:(?<=[.!?])|(?<=[.!?][*_])|(?<=[.!?](?:\*\*|__|==|~~)))"
+    r"\s+(?=(?:\*\*|__|==|~~|[*_])?[A-Z\"\']|$)"
+)
+_PAIRED_DELIMS = ("**", "__", "==", "~~")
+
+
+def _split_raw_sentences(text: str) -> list[str]:
+    sentences = [s.strip() for s in _RAW_SENTENCE_BOUNDARY_RE.split(text) if s.strip()]
+    return sentences if sentences else [text]
+
+
+def _balance_emphasis(raw_sentences: list[str]) -> list[str]:
+    """A bold (or highlight/strikethrough) run can span several sentences --
+    e.g. a whole paragraph wrapped in one `**...**`. Split per sentence, the
+    first half gets only the opening `**` and the last only the closing one,
+    so neither renders as bold (render.py falls back to plain text for an
+    unbalanced sentence rather than show a stray `**`). Close any run still
+    open at the end of a sentence and reopen it at the start of the next, so
+    every sentence is self-contained markdown and keeps its formatting."""
+    out = []
+    carried: list[str] = []  # delimiters opened in an earlier sentence, still open
+    for sentence in raw_sentences:
+        sentence = "".join(carried) + sentence
+        still_open = [d for d in _PAIRED_DELIMS if sentence.count(d) % 2]
+        out.append(sentence + "".join(reversed(still_open)))
+        carried = still_open
+    return out
 
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s")
@@ -119,6 +158,73 @@ _CODE_FENCE_RE = re.compile(r"^```")
 _BLOCKQUOTE_RE = re.compile(r"^>")
 _LIST_ITEM_RE = re.compile(r"^[-*+]\s|^\d+\.\s")
 _LIST_ITEM_LINE_RE = re.compile(r"^(\s*)([-*+]\s+|\d+\.\s+)")
+_TABLE_DELIM_ROW_RE = re.compile(r"^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$")
+
+
+def _is_table_start(lines: list[str], i: int) -> bool:
+    """GFM table: a row with a "|" immediately followed by a delimiter row
+    ("|---|:---:|") that itself contains a "|"."""
+    return (
+        i + 1 < len(lines)
+        and "|" in lines[i]
+        and "|" in lines[i + 1]
+        and bool(_TABLE_DELIM_ROW_RE.match(lines[i + 1]))
+    )
+
+
+def _split_headings_and_tables(block: str) -> list[str]:
+    """An ATX heading is always exactly one line, and a table runs only
+    until its first non-"|" line -- but this segmenter's block splitter only
+    breaks on *blank* lines, so a heading with its body directly underneath
+    ("## Overview\nThe body...", a very common real-world pattern) or a
+    table directly under a heading used to land in one block, classified by
+    its first line alone: the whole section -- body, bold labels, table and
+    all -- became a single giant "heading" segment, read as one unbroken
+    chunk instead of sentence by sentence. Split each heading line and each
+    table out into its own block. A fenced code block is left whole (its
+    "# comment" lines are not headings)."""
+    if _CODE_FENCE_RE.match(block):
+        return [block]
+    lines = block.split("\n")
+    pieces: list[str] = []
+    current: list[str] = []
+
+    def flush() -> None:
+        text = "\n".join(current).strip()
+        if text:
+            pieces.append(text)
+        current.clear()
+
+    i = 0
+    while i < len(lines):
+        if _HEADING_RE.match(lines[i]):
+            flush()
+            pieces.append(lines[i].strip())
+            i += 1
+        elif _is_table_start(lines, i):
+            flush()
+            j = i + 2
+            while j < len(lines) and "|" in lines[j] and lines[j].strip():
+                j += 1
+            pieces.append("\n".join(lines[i:j]).strip())
+            i = j
+        else:
+            current.append(lines[i])
+            i += 1
+    flush()
+    return pieces
+
+
+def split_table_cells(row: str) -> list[str]:
+    """Cells of one GFM table row (outer pipes optional, "\\|" is a literal
+    pipe inside a cell). Shared with render.py so display and speech always
+    agree on where cells begin and end."""
+    row = row.strip()
+    if row.startswith("|"):
+        row = row[1:]
+    if row.endswith("|") and not row.endswith("\\|"):
+        row = row[:-1]
+    return [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", row)]
 
 
 def _split_prose_and_list(block: str) -> list[str]:
@@ -146,6 +252,8 @@ def _split_prose_and_list(block: str) -> list[str]:
     independently, which silently eats the leading indentation that encodes
     its nesting depth)."""
     lines = block.split("\n")
+    if _is_table_start(lines, 0):
+        return [block]  # a table (see _split_headings_and_tables); its cells are never list items
     if _LIST_ITEM_RE.match(lines[0]):
         return [block]  # already list-first; the list branch handles all of it, nesting included
     for i, line in enumerate(lines):
@@ -175,10 +283,11 @@ def segment_document(markdown: str) -> SegmentedDocument:
         if not outer_trimmed:
             continue
 
-        for trimmed in _split_prose_and_list(outer_trimmed):
-            doc.blocks.append(trimmed)
-            _segment_one_block(trimmed, block_index, doc)
-            block_index += 1
+        for structural in _split_headings_and_tables(outer_trimmed):
+            for trimmed in _split_prose_and_list(structural):
+                doc.blocks.append(trimmed)
+                _segment_one_block(trimmed, block_index, doc)
+                block_index += 1
 
     return doc
 
@@ -189,15 +298,40 @@ def _segment_one_block(trimmed: str, block_index: int, doc: SegmentedDocument) -
     elif _THEMATIC_BREAK_RE.match(trimmed):
         pass  # thematic break (horizontal rule) -- nothing to read aloud
     elif (m := _HEADING_RE.match(trimmed)):
+        # Read sentence by sentence like a paragraph (a long heading such as
+        # "Can X do Y? A survey of Z" is two sentences), but still one TOC
+        # entry -- for the whole heading, pointing at its first sentence.
         level = len(m.group(1))
-        plain = strip_markdown(trimmed)
-        if plain and has_speakable_content(plain):
-            idx = len(doc.segments)
-            doc.segments.append(Segment(
-                index=idx, text=plain, raw_text=trimmed,
-                type="heading", level=level, block_index=block_index,
-            ))
-            doc.toc.append(TocEntry(level=level, text=plain, segment_index=idx))
+        raw_no_prefix = re.sub(r"^#{1,6}\s+", "", trimmed)
+        plain_whole = strip_markdown(raw_no_prefix)
+        first_idx = None
+        for plain_sentence, raw_sentence in _sentence_pairs(raw_no_prefix, plain_whole):
+            plain_sentence = plain_sentence.strip()
+            raw_sentence = raw_sentence.strip()
+            if plain_sentence and has_speakable_content(plain_sentence):
+                idx = len(doc.segments)
+                if first_idx is None:
+                    first_idx = idx
+                doc.segments.append(Segment(
+                    index=idx, text=plain_sentence, raw_text=raw_sentence,
+                    type="heading", level=level, block_index=block_index,
+                ))
+        if first_idx is not None:
+            doc.toc.append(TocEntry(level=level, text=plain_whole, segment_index=first_idx))
+    elif _is_table_start(trimmed.split("\n"), 0):
+        # One segment per row (header row included, delimiter row skipped),
+        # spoken as its cells separated by commas. raw_text is the row's
+        # source line, which render.py uses to match rows back to segments.
+        rows = trimmed.split("\n")
+        for row in rows[:1] + rows[2:]:
+            cells = [strip_markdown(c) for c in split_table_cells(row)]
+            plain = ", ".join(c for c in cells if has_speakable_content(c))
+            if plain:
+                idx = len(doc.segments)
+                doc.segments.append(Segment(
+                    index=idx, text=plain, raw_text=row.strip(),
+                    type="tablerow", level=None, block_index=block_index,
+                ))
     elif _CODE_FENCE_RE.match(trimmed):
         idx = len(doc.segments)
         doc.segments.append(Segment(

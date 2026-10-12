@@ -10,8 +10,9 @@ parses markdown or manages a virtual DOM itself.
 Every segment type renders its `raw_text` (markdown intact -- bold/links/code/etc
 survive) through markdown-it-py's inline renderer; only the code block's fenced
 content is shown verbatim/escaped rather than markdown-rendered. Paragraph and
-blockquote segments are one sentence each (see segmentation.py), so this is a
-per-sentence inline render, not a whole-block one. Paragraph segments additionally
+blockquote/heading segments are one sentence each (see segmentation.py), so this
+is a per-sentence inline render, not a whole-block one. Paragraph and heading
+segments additionally
 carry `data-words` (derived from the plain, stripped `text` -- not `raw_text`) so
 the player can swap in per-word spans only while that segment is the active one,
 then restore the original (nicely-formatted) HTML afterward.
@@ -26,7 +27,7 @@ from itertools import groupby
 from markdown_it import MarkdownIt
 from markdown_it.rules_inline.state_inline import Delimiter, StateInline
 
-from segmentation import Segment, SegmentedDocument, segment_document
+from segmentation import Segment, SegmentedDocument, segment_document, split_table_cells
 
 # html_block/html_inline disabled: this app has no authentication (see
 # CLAUDE.md/README.md), so any device on the LAN can add content, and PDF/
@@ -153,13 +154,23 @@ def _renders_safely_as_inline_markdown(raw_sentence: str) -> bool:
     return True
 
 
+# Bold/underline wrapped around nothing but punctuation, e.g. "collapses**.**"
+# -- an ebook-conversion artifact. CommonMark can't open emphasis between a
+# letter and punctuation, so markdown-it prints the asterisks literally; bold
+# punctuation is invisible anyway, so just drop the markers.
+_EMPHASIZED_PUNCT_RE = re.compile(r"(\*\*|__)([^\w\s*_]{1,3})\1")
+
+
+def _render_inline(src: str) -> str:
+    return _md.renderInline(_EMPHASIZED_PUNCT_RE.sub(r"\2", src))
+
+
 def _render_inline_or_plain(seg: Segment) -> str:
     if _renders_safely_as_inline_markdown(seg.raw_text):
-        return _md.renderInline(seg.raw_text)
+        return _render_inline(seg.raw_text)
     return html.escape(seg.text)
 
 
-_HEADING_PREFIX_RE = re.compile(r"^#{1,6}\s+")
 _LIST_MARKER_RE = re.compile(r"^([-*+]\s+|\d+\.\s+)")
 _ORDERED_MARKER_RE = re.compile(r"^\d+\.\s")
 _CODE_FENCE_RE = re.compile(r"^```(\w*)\n(.*?)\n?```$", re.DOTALL)
@@ -169,10 +180,60 @@ def _attr(s: str) -> str:
     return html.escape(s, quote=True)
 
 
-def _render_heading(seg: Segment) -> str:
-    inline = _md.renderInline(_HEADING_PREFIX_RE.sub("", seg.raw_text))
-    level = seg.level or 1
-    return f'<h{level} data-seg="{seg.index}" data-type="heading">{inline}</h{level}>'
+def _word_spans(segs: list[Segment], seg_type: str) -> list[str]:
+    """One <span> per sentence segment, carrying data-words for the player's
+    per-word highlighting (see module docstring)."""
+    spans = []
+    for seg in segs:
+        words = re.findall(r"\S+", seg.text)
+        words_json = _attr(json.dumps(words))
+        inline = _render_inline_or_plain(seg)
+        spans.append(
+            f'<span data-seg="{seg.index}" data-type="{seg_type}" data-words="{words_json}">'
+            f"{inline}</span>"
+        )
+    return spans
+
+
+def _render_heading(segs: list[Segment]) -> str:
+    # segmentation.py already removed the "## " prefix from each sentence's raw_text.
+    level = segs[0].level or 1
+    return f"<h{level}>" + " ".join(_word_spans(segs, "heading")) + f"</h{level}>"
+
+
+def _table_alignments(delim_row: str) -> list[str | None]:
+    out = []
+    for cell in split_table_cells(delim_row):
+        left, right = cell.startswith(":"), cell.endswith(":")
+        out.append("center" if left and right else "right" if right else "left" if left else None)
+    return out
+
+
+def _render_table(segs: list[Segment], raw_block: str) -> str:
+    """Rebuild the table from its source rows, attaching each row's segment
+    (matched in order by raw_text -- a row with nothing speakable has no
+    segment, and renders without data-seg)."""
+    rows = raw_block.split("\n")
+    aligns = _table_alignments(rows[1])
+    header, body = rows[0], rows[2:]
+    pending = list(segs)
+
+    def tr(row: str, cell_tag: str) -> str:
+        attrs = ""
+        if pending and pending[0].raw_text == row.strip():
+            attrs = f' data-seg="{pending.pop(0).index}" data-type="tablerow"'
+        cells = split_table_cells(row)
+        out = []
+        for i, align in enumerate(aligns):  # GFM: header width decides column count
+            text = cells[i] if i < len(cells) else ""
+            style = f' style="text-align:{align}"' if align else ""
+            out.append(f"<{cell_tag}{style}>{_render_inline(text)}</{cell_tag}>")
+        return f"<tr{attrs}>" + "".join(out) + "</tr>"
+
+    html_rows = ["<thead>" + tr(header, "th") + "</thead>"]
+    if body:
+        html_rows.append("<tbody>" + "".join(tr(r, "td") for r in body) + "</tbody>")
+    return '<div class="table-wrap"><table>' + "".join(html_rows) + "</table></div>"
 
 
 def _render_code(seg: Segment) -> str:
@@ -208,7 +269,7 @@ def _render_list(segs: list[Segment]) -> str:
             tag = "ol" if _ORDERED_MARKER_RE.match(seg.raw_text) else "ul"
             stack.append({"depth": depth, "tag": tag})
             out.append(f"<{tag}>")
-        inline = _md.renderInline(_LIST_MARKER_RE.sub("", seg.raw_text, count=1))
+        inline = _render_inline(_LIST_MARKER_RE.sub("", seg.raw_text, count=1))
         out.append(f'<li data-seg="{seg.index}" data-type="listitem">{inline}')
 
     while stack:
@@ -226,16 +287,7 @@ def _render_blockquote(segs: list[Segment]) -> str:
 
 
 def _render_paragraph(segs: list[Segment]) -> str:
-    spans = []
-    for seg in segs:
-        words = re.findall(r"\S+", seg.text)
-        words_json = _attr(json.dumps(words))
-        inline = _render_inline_or_plain(seg)
-        spans.append(
-            f'<span data-seg="{seg.index}" data-type="paragraph" data-words="{words_json}">'
-            f"{inline}</span>"
-        )
-    return "<p>" + " ".join(spans) + "</p>"
+    return "<p>" + " ".join(_word_spans(segs, "paragraph")) + "</p>"
 
 
 def render_document(markdown: str) -> tuple[str, SegmentedDocument]:
@@ -260,7 +312,9 @@ def render_document(markdown: str) -> tuple[str, SegmentedDocument]:
 
         seg_type = segs[0].type
         if seg_type == "heading":
-            blocks_html.append(_render_heading(segs[0]))
+            blocks_html.append(_render_heading(segs))
+        elif seg_type == "tablerow":
+            blocks_html.append(_render_table(segs, raw_block))
         elif seg_type == "code":
             blocks_html.append(_render_code(segs[0]))
         elif seg_type == "listitem":

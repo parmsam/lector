@@ -256,7 +256,7 @@
     if (index >= 0 && segEls[index]) {
       const el = segEls[index];
       el.classList.add("sentence-active");
-      if (segTypes[index] === "paragraph") setWordSpans(el);
+      if (segTypes[index] === "paragraph" || segTypes[index] === "heading") setWordSpans(el);
       maybeAutoScroll(el);
     }
     updateDocSeekUI(0);

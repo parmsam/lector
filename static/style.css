@@ -324,6 +324,10 @@ main.reader-main { padding-bottom: var(--player-bar-space); }
 
 .doc-body pre { background: var(--surface); padding: 1rem; border-radius: 8px; overflow-x: auto; }
 .doc-body blockquote { border-left: 3px solid var(--accent); margin: 0; padding-left: 1rem; color: var(--fg-muted); }
+.doc-body .table-wrap { overflow-x: auto; margin: 1rem 0; }
+.doc-body table { border-collapse: collapse; font-size: 0.95em; }
+.doc-body th, .doc-body td { border: 1px solid var(--border); padding: 0.4rem 0.7rem; vertical-align: top; text-align: left; }
+.doc-body th { background: var(--surface); }
 .doc-body mark { background: var(--mark-bg); color: var(--fg); border-radius: 3px; padding: 0 0.15em; }
 
 [data-seg] { border-radius: 3px; cursor: pointer; }

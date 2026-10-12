@@ -43,14 +43,36 @@ def test_highlight_can_nest_emphasis():
     assert "<mark><strong>bold and highlighted</strong></mark>" in html
 
 
-def test_highlight_spanning_two_sentences_falls_back_to_plain_text():
+def test_highlight_spanning_two_sentences_keeps_formatting_per_sentence():
     html, _ = render_document(
         "==A prose pass through the outline. That file stays the source, not synced.=="
     )
     assert "==" not in html
-    assert "<mark>" not in html
-    assert "A prose pass through the outline." in html
-    assert "That file stays the source, not synced." in html
+    assert "<mark>A prose pass through the outline.</mark>" in html
+    assert "<mark>That file stays the source, not synced.</mark>" in html
+
+
+def test_bold_spanning_sentences_keeps_bold_per_sentence():
+    html, doc = render_document("**First bold. Second bold.** Plain after.")
+    assert [s.text for s in doc.segments] == ["First bold.", "Second bold.", "Plain after."]
+    assert "<strong>First bold.</strong>" in html
+    assert "<strong>Second bold.</strong>" in html
+    assert "**" not in html
+
+
+def test_heading_sentences_are_word_highlightable_spans():
+    html, doc = render_document("## Can it work? A survey.")
+    assert html.startswith("<h2>")
+    assert '<span data-seg="0" data-type="heading" data-words=' in html
+    assert '<span data-seg="1" data-type="heading" data-words=' in html
+
+
+def test_table_renders_with_one_seg_per_row():
+    html, doc = render_document("| Term | Meaning |\n|:---|---:|\n| **Drift** | slow change |")
+    assert "<table>" in html
+    assert '<tr data-seg="0" data-type="tablerow"><th style="text-align:left">Term</th>' in html
+    assert '<tr data-seg="1" data-type="tablerow"><td style="text-align:left"><strong>Drift</strong></td>' in html
+    assert "---" not in html
 
 
 def test_raw_html_is_escaped_not_executed():
@@ -97,3 +119,9 @@ def test_list_immediately_after_bold_label_renders_as_real_list():
     assert "<ul><li" in html
     assert html.count("<li") == 3
     assert "- one" not in html
+
+
+def test_bold_wrapped_punctuation_renders_without_literal_asterisks():
+    html, _ = render_document("The distinction collapses**.** He suggested more.")
+    assert "**" not in html
+    assert "The distinction collapses." in html
