@@ -15,6 +15,12 @@ This is a rewrite of a previous Tauri desktop-app version as a network-
 accessible web app with a real persistent article library. See `CLAUDE.md` for
 the architecture and `LEARNINGS.md` for the design decisions behind it.
 
+| Library | Reader |
+|:---:|:---:|
+| ![Library view with articles organized into folders](docs/screenshots/library.png) | ![Reader view with table of contents, a rendered table, and the current sentence and word highlighted during playback](docs/screenshots/reader.png) |
+
+*Screenshots use public-domain texts (Sun Tzŭ's* The Art of War*, trans. Lionel Giles; Austen, Thoreau, Emerson, Lincoln) via Project Gutenberg.*
+
 ## Features
 
 - Read aloud any Markdown or PDF file with Kokoro TTS (7 voices), running
