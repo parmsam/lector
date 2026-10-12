@@ -10,6 +10,13 @@ use the section as the GitHub release notes.
 
 ## [Unreleased]
 
+### Changed
+- PDF import no longer runs OCR. marker-pdf 2.0's OCR needs a separate
+  `llama-server` (llama.cpp) install plus a ~1.5GB model download, so
+  imports now use each PDF's built-in text instead. Normal digital PDFs
+  convert as before; scanned/image-only PDFs come out empty (install
+  llama.cpp and re-enable OCR if you need them).
+
 ## [1.2.1] - 2026-10-12
 
 ### Fixed

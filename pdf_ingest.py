@@ -25,7 +25,13 @@ def convert_pdf_to_markdown(pdf_path: str) -> str:
         from marker.output import text_from_rendered
 
         models = create_model_dict()
-        converter = PdfConverter(artifact_dict=models)
+        # OCR (marker's surya recognition model) requires a llama-server
+        # binary (llama.cpp) that isn't installed by default -- see
+        # LEARNINGS.md. disable_ocr keeps only each PDF's embedded text
+        # layer, which covers normal digitally-created PDFs without that
+        # extra system dependency; scanned/image-only PDFs will come out
+        # empty.
+        converter = PdfConverter(artifact_dict=models, config={"disable_ocr": True})
         rendered = converter(pdf_path)
         text, _, _ = text_from_rendered(rendered)
         return text

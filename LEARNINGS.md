@@ -225,6 +225,18 @@ again the way it did in v1 (commit `981c169`). `pdf_ingest.py` lazily imports
 failure can never take down the rest of the app (paste/markdown-upload/
 playback) -- it only surfaces when a PDF is actually uploaded.
 
+`convert_pdf_to_markdown()` passes `config={"disable_ocr": True}` to
+`PdfConverter`. As of marker-pdf 2.0.0, its OCR path (surya's recognition
+model) runs a GGUF vision-language model via a `llama-server` (llama.cpp)
+subprocess -- a new system-level binary dependency, not installed by default,
+plus a ~1.5GB one-time model download from Hugging Face on first use.
+`disable_ocr` skips that entirely and falls back to each PDF's embedded text
+layer only (no `llama-server` needed). This is consistent with "best-effort,
+not core": it handles normal digitally-created PDFs fine but produces empty
+output for scanned/image-only PDFs. If OCR is needed later, `brew install
+llama.cpp` provides the missing binary and the model downloads automatically
+on first real use.
+
 ## Server-side rendering avoids a second markdown parser
 
 There's no client-side build step (no React/Vite) and therefore no client-side
