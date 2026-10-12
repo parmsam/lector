@@ -18,7 +18,7 @@ import time
 
 import httpx
 
-REPO = "parmsam/markdown-reader2"
+REPO = "parmsam/lector"
 CHECK_INTERVAL_SECONDS = 6 * 60 * 60  # how often to re-hit the GitHub API
 _TIMEOUT_SECONDS = 3.0
 
@@ -40,6 +40,9 @@ def _fetch_latest_tag() -> str | None:
             f"https://api.github.com/repos/{REPO}/releases/latest",
             headers={"Accept": "application/vnd.github+json"},
             timeout=_TIMEOUT_SECONDS,
+            # GitHub answers a renamed repo's old API URL with a 301; follow
+            # it rather than silently reporting no update.
+            follow_redirects=True,
         )
         resp.raise_for_status()
         return resp.json().get("tag_name")

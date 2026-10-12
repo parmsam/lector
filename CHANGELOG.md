@@ -10,6 +10,12 @@ use the section as the GitHub release notes.
 
 ## [Unreleased]
 
+### Changed
+- The project is renamed from `markdown-reader2` to `lector` to match the
+  app's name: the GitHub repo is now
+  [parmsam/lector](https://github.com/parmsam/lector) (old links redirect),
+  and the Python package name matches.
+
 ## [1.2.2] - 2026-10-12
 
 ### Changed
@@ -107,9 +113,9 @@ First tagged release of the rewrite as a network-accessible web app.
 - Mobile support: Add to Home Screen, Android/iOS share target for adding
   links, light/dark theme.
 
-[Unreleased]: https://github.com/parmsam/markdown-reader2/compare/v1.2.2...HEAD
-[1.2.2]: https://github.com/parmsam/markdown-reader2/compare/v1.2.1...v1.2.2
-[1.2.1]: https://github.com/parmsam/markdown-reader2/compare/v1.2.0...v1.2.1
-[1.2.0]: https://github.com/parmsam/markdown-reader2/compare/v1.1.0...v1.2.0
-[1.1.0]: https://github.com/parmsam/markdown-reader2/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/parmsam/markdown-reader2/releases/tag/v1.0.0
+[Unreleased]: https://github.com/parmsam/lector/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/parmsam/lector/compare/v1.2.1...v1.2.2
+[1.2.1]: https://github.com/parmsam/lector/compare/v1.2.0...v1.2.1
+[1.2.0]: https://github.com/parmsam/lector/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/parmsam/lector/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/parmsam/lector/releases/tag/v1.0.0

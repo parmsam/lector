@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stop the markdown-reader2 server started by start.sh.
+# Stop the Lector server started by start.sh.
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

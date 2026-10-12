@@ -1,5 +1,5 @@
 [project]
-name = "markdown-reader2"
+name = "lector"
 version = "1.2.2"
 description = "Locally-hosted read-aloud markdown/PDF article library powered by Kokoro TTS (MLX)"
 requires-python = ">=3.12,<3.14"

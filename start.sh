@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the markdown-reader2 server in the foreground (Ctrl+C to stop).
+# Start the Lector server in the foreground (Ctrl+C to stop).
 # The process id is tracked in data/server.pid so ./stop.sh can also stop it
 # from another terminal.
 set -euo pipefail

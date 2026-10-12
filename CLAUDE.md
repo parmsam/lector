@@ -13,8 +13,8 @@ GitHub release notes.
 
 ## What this is
 
-A FastHTML web app, branded as **Lector** in the UI/README (the repo/package
-name stays `markdown-reader2`), run as a single long-lived Python process on
+A FastHTML web app called **Lector** (repo `parmsam/lector`; renamed from
+`markdown-reader2` in 2026-10), run as a single long-lived Python process on
 your local network, that maintains a personal library of markdown/PDF
 articles and reads them aloud with Kokoro TTS (via `mlx-audio`, Apple Silicon
 only), with real-time sentence/word highlighting, a table of contents, and
