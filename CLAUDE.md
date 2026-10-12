@@ -3,6 +3,14 @@
 Architecture reference for working on this project. See also `README.md` (tech
 stack, setup, usage) and `LEARNINGS.md` (why things are built the way they are).
 
+## Changelog
+
+`CHANGELOG.md` is maintained by hand. Every user-visible change gets a line
+under **Unreleased** (Added / Changed / Fixed) in the same commit. When
+cutting a release, rename that section to the version and date, bump
+`pyproject.toml` (+ `uv lock`), tag `vX.Y.Z`, and use the section as the
+GitHub release notes.
+
 ## What this is
 
 A FastHTML web app, branded as **Lector** in the UI/README (the repo/package

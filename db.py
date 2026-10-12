@@ -60,6 +60,7 @@ def get_db(path: str | Path = DB_PATH) -> Database:
             "last_segment_index": int,    # -1 = no progress yet
             "last_voice": str,
             "last_speed": float,
+            "last_played_at": str,        # when progress was last saved (orders "Continue listening")
         },
         pk="id",
         if_not_exists=True,
@@ -69,8 +70,11 @@ def get_db(path: str | Path = DB_PATH) -> Database:
     # migration framework), so an existing data/library.db from before the
     # "folder" column existed needs it added explicitly.
     articles = db.t.articles
-    if "folder" not in {c.name for c in articles.columns}:
+    existing_columns = {c.name for c in articles.columns}
+    if "folder" not in existing_columns:
         articles.add_column("folder", str)
+    if "last_played_at" not in existing_columns:
+        articles.add_column("last_played_at", str)
 
     # Per-folder sort override (independent of the global "Sort by" and of
     # sibling folders) -- a folder has no row of its own anywhere else (see
@@ -239,7 +243,11 @@ def rename_folder(db: Database, old_path: str, new_path: str) -> int:
 
 
 SORT_OPTIONS = {
-    "recent": ("Recently added", "-created_at"),
+    # Plain SQL ORDER BY clauses. Not "-created_at": SQLite treats that as
+    # numeric negation of a text column (every row becomes -2026), so all
+    # rows tie and "Recently added" silently came out in insertion order --
+    # i.e. oldest first.
+    "recent": ("Recently added", "created_at DESC"),
     "oldest": ("Oldest first", "created_at"),
     "title_asc": ("Title (A-Z)", "title COLLATE NOCASE"),
     "title_desc": ("Title (Z-A)", "title COLLATE NOCASE DESC"),
@@ -283,7 +291,7 @@ def set_pdf_path(db: Database, article_id: int, pdf_path: str) -> None:
 def update_progress(db: Database, article_id: int, *, segment_index: int, voice: str, speed: float) -> None:
     articles = get_articles_table(db)
     articles.update(
-        {"last_segment_index": segment_index, "last_voice": voice, "last_speed": speed},
+        {"last_segment_index": segment_index, "last_voice": voice, "last_speed": speed, "last_played_at": _now()},
         article_id,
     )
 

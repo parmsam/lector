@@ -27,6 +27,7 @@ import tts
 import update_check
 import url_ingest
 from render import render_document
+from segmentation import segment_document
 
 DB = db.get_db()
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -92,6 +93,53 @@ def get_favicon_ico():
 
 # ---------------------------------------------------------------- library
 
+# Narration pace at 1.0x -- matches player.js's DEFAULT_WORDS_PER_SECOND (2.5).
+_WORDS_PER_MINUTE = 150
+# content_hash -> spoken word count per segment (code segments count 0, since
+# the player skips them). Keyed by hash so an edit naturally misses; pruned to
+# the current library's hashes on every library render.
+_segment_words_cache: dict[str, list[int]] = {}
+
+
+def _segment_word_counts(article) -> list[int]:
+    counts = _segment_words_cache.get(article.content_hash)
+    if counts is None:
+        doc = segment_document(article.markdown)
+        counts = [0 if seg.type == "code" else len(seg.text.split()) for seg in doc.segments]
+        _segment_words_cache[article.content_hash] = counts
+    return counts
+
+
+def _library_stats(articles: list) -> dict[int, comp.ArticleStats]:
+    """Listening time and progress for each article's library row.
+
+    Progress is measured in words (not segments), so a long paragraph counts
+    for more than a one-word heading. Time left uses the speed the article
+    was last played at."""
+    stats = {}
+    for a in articles:
+        counts = _segment_word_counts(a)
+        total = sum(counts)
+        progress = None
+        minutes_left = None
+        finished = False
+        idx = a.last_segment_index
+        if idx is not None and idx >= 0 and total:
+            done = sum(counts[:idx])
+            progress = done / total
+            minutes_left = (total - done) / (_WORDS_PER_MINUTE * (a.last_speed or 1.0))
+            finished = idx >= len(counts) - 1
+        stats[a.id] = comp.ArticleStats(
+            minutes=total / _WORDS_PER_MINUTE, progress=progress,
+            minutes_left=minutes_left, finished=finished,
+        )
+    live = {a.content_hash for a in articles}
+    for h in list(_segment_words_cache):
+        if h not in live:
+            del _segment_words_cache[h]
+    return stats
+
+
 @app.get("/")
 def get_library(request: Request, notice: str = "", sort: str = db.DEFAULT_SORT):
     # Only worth showing when browsing from the same machine -- if you're
@@ -101,8 +149,10 @@ def get_library(request: Request, notice: str = "", sort: str = db.DEFAULT_SORT)
         lan_ip = _get_lan_ip()
         if lan_ip:
             lan_url = f"http://{lan_ip}:{PORT}"
+    articles = db.list_articles(DB, sort=sort)
     return comp.library_page(
-        db.list_articles(DB, sort=sort), lan_url=lan_url, notice=notice, sort=sort,
+        articles, lan_url=lan_url, notice=notice, sort=sort,
+        stats=_library_stats(articles),
         folder_sort_overrides=db.get_folder_sort_overrides(DB),
         update_available=update_check.get_available_update(comp.APP_VERSION),
     )

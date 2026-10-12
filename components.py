@@ -8,12 +8,15 @@ from __future__ import annotations
 import re
 import time
 import tomllib
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from urllib.parse import urlparse
 from pathlib import Path
 
 from fasthtml.common import (
     A, Audio, Body, Blockquote, Button, Datalist, Details, Div, Form, H1, H2,
-    Head, Html, Img, Input, Label, Link, Main, Meta, NotStr, Nav, Option, P,
-    Script, Select, Span, Style, Summary, Textarea, Title,
+    Head, Hr, Html, Img, Input, Label, Link, Main, Meta, NotStr, Nav, Option, P,
+    Script, Section, Select, Span, Style, Summary, Textarea, Title,
 )
 
 from db import SORT_OPTIONS, DEFAULT_SORT
@@ -114,22 +117,39 @@ def _head(title: str):
     )
 
 
-def _nav():
+def _nav(lan_url: str | None = None):
+    """Top bar: brand, Add, theme toggle, and a ⋯ menu holding the
+    rarely-needed bits (version/update check, and -- on the library page,
+    browsing from this machine -- the LAN address to open on a phone) so
+    they don't compete with the content."""
+    phone_items = []
+    if lan_url:
+        phone_items = [
+            Div(
+                Span("Open on your phone", cls="popover-label"),
+                A(lan_url, href=lan_url, cls="lan-url-link"),
+                cls="popover-field",
+            ),
+            Button("Copy address", type="button", cls="popover-item copy-lan-url", data_url=lan_url),
+            Hr(cls="popover-sep"),
+        ]
     return Nav(
         A(
             Img(src=f"/static/favicon.svg?v={_STATIC_VERSION}", alt="", width="22", height="22", cls="brand-logo"),
             Span(APP_NAME, cls="brand-name"),
             href="/", cls="nav-link nav-brand",
         ),
-        Span(
-            Span(f"v{APP_VERSION}"),
-            A("Check for updates", href="#", id="check-update-link", cls="nav-version-check"),
-            cls="nav-version",
-        ),
-        A("+ Add article", href="/add", cls="nav-link nav-add"),
+        A("+ Add", href="/add", cls="nav-link nav-add", title="Add an article"),
         Button(
             id="theme-toggle", cls="theme-toggle", type="button",
             title="Toggle light/dark theme", aria_label="Toggle light/dark theme",
+        ),
+        Button("⋯", type="button", cls="nav-menu-btn", popovertarget="nav-menu", aria_label="More"),
+        Div(
+            *phone_items,
+            Span(f"{APP_NAME} v{APP_VERSION}", cls="popover-label nav-menu-version"),
+            A("Check for updates", href="#", id="check-update-link", cls="popover-item"),
+            id="nav-menu", popover="auto", cls="popover-menu",
         ),
         cls="topnav",
     )
@@ -229,25 +249,34 @@ def _folder_sort_select(path: str, inherited_sort: str, overrides: dict) -> Sele
     return Select(*options, name="sort", cls="folder-sort-select", title="Sort just this folder")
 
 
-def _render_folder_node(name: str, node: dict, all_folders: list[str], inherited_sort: str, overrides: dict) -> Details:
+def _render_folder_node(name: str, node: dict, all_folders: list[str], inherited_sort: str, overrides: dict, stats: dict) -> Details:
+    # A folder holding nothing but a single subfolder (e.g. an import's
+    # "markdown_output/Book Title" wrapper) is shown as one combined row,
+    # "markdown_output / Book Title", rather than two levels of nesting for
+    # one item. Actions (rename/delete/sort) then apply to the deepest one.
+    while not node["articles"] and len(node["children"]) == 1:
+        child_name, node = next(iter(node["children"].items()))
+        name = f"{name} / {child_name}"
+
     # Each folder's *own* effective sort: its explicit override if it has
     # one, else whatever it inherits from its nearest ancestor (ultimately
     # the global "Sort by" at the root) -- passed down as `inherited_sort`
     # for descendants that don't have their own override either.
     my_sort = overrides.get(node["path"], inherited_sort)
     total = len(node["articles"]) + _count_descendants(node["children"])
-    rows = [_article_row(a, all_folders) for a in _sort_articles(node["articles"], my_sort)]
+    rows = [_article_row(a, all_folders, stats) for a in _sort_articles(node["articles"], my_sort)]
     children = [
-        _render_folder_node(child_name, child, all_folders, my_sort, overrides)
+        _render_folder_node(child_name, child, all_folders, my_sort, overrides, stats)
         for child_name, child in _sorted_folder_entries(node["children"].items(), my_sort)
     ]
     menu_id = f"folder-menu-{_html_id(node['path'])}"
     return Details(
         Summary(
-            Span(f"\U0001F4C1 {name}", cls="folder-name"),
-            Span(f"({total})", cls="folder-count"),
+            Span("", cls="folder-chevron", aria_hidden="true"),
+            Span(name, cls="folder-name"),
+            Span(str(total), cls="folder-count", title=f"{total} article{'s' if total != 1 else ''}"),
             Button(
-                "⋯", type="button", cls="btn btn-sm kebab-btn",
+                "⋯", type="button", cls="kebab-btn",
                 popovertarget=menu_id, aria_label=f"Actions for folder {name}",
             ),
         ),
@@ -270,17 +299,18 @@ def _render_folder_node(name: str, node: dict, all_folders: list[str], inherited
             ),
             id=menu_id, popover="auto", cls="popover-menu",
         ),
-        Div(*rows, cls="article-list") if rows else "",
-        *children,
-        open=True,
+        Div(*children, *rows, cls="folder-contents"),
+        # Collapsed by default; library.js reopens whichever folders this
+        # browser last had open (and opens matching ones while searching).
         cls="folder-group",
+        data_folder_path=node["path"],
     )
 
 
 def _sort_form(sort: str) -> Form:
     options = [Option(label, value=key, selected=(key == sort)) for key, (label, _) in SORT_OPTIONS.items()]
     return Form(
-        Label("Sort by", Select(*options, name="sort", id="sort-select")),
+        Label(Span("Sort by", cls="sort-label"), Select(*options, name="sort", id="sort-select")),
         method="get", action="/", id="sort-form", cls="sort-form",
     )
 
@@ -288,14 +318,16 @@ def _sort_form(sort: str) -> Form:
 def library_page(
     articles: list, lan_url: str | None = None, notice: str | None = None,
     sort: str = DEFAULT_SORT, folder_sort_overrides: dict | None = None,
-    update_available: str | None = None,
+    update_available: str | None = None, stats: dict | None = None,
 ) -> Html:
     folder_sort_overrides = folder_sort_overrides or {}
+    stats = stats or {}
     has_folders = any(a.folder for a in articles)
     if not articles:
         body = Div(
             P("Your library is empty."),
             A("Add your first article", href="/add", cls="btn btn-primary"),
+            P("Or drop a .md, .txt or .pdf file anywhere on this page.", cls="form-hint"),
             cls="empty-state",
         )
     else:
@@ -309,40 +341,45 @@ def library_page(
         # default for its own children.
         all_folders = sorted({a.folder for a in articles if a.folder})
         root_articles, tree = _build_folder_tree(articles)
-        parts = []
-        if root_articles:
-            parts.append(Div(*[_article_row(a, all_folders) for a in root_articles], cls="article-list"))
-        parts.extend(
-            _render_folder_node(name, node, all_folders, sort, folder_sort_overrides)
-            for name, node in _sorted_folder_entries(tree.items(), sort)
-        )
-        body = Div(*parts)
+        sections = []
 
-    # Only rendered when app.py detects the request came from localhost --
-    # the point is giving you something to copy onto another device (phone,
-    # tablet) without having to go dig it out of the terminal that ran
-    # start.sh.
-    lan_banner = (
-        Div(
-            Span("On your network: ", cls="lan-banner-label"),
-            A(lan_url, href=lan_url, cls="lan-url-link"),
-            Button("Copy", type="button", cls="btn btn-sm", id="copy-lan-url", data_url=lan_url),
-            cls="lan-banner",
-        )
-        if lan_url else ""
-    )
+        in_progress = [
+            a for a in articles
+            if a.last_segment_index is not None and a.last_segment_index >= 0
+            and not (stats.get(a.id) and stats[a.id].finished)
+        ]
+        in_progress.sort(key=lambda a: (a.last_played_at or "", a.created_at or ""), reverse=True)
+        if in_progress:
+            sections.append(Section(
+                H2("Continue listening", cls="library-section-title"),
+                Div(*[_article_row(a, all_folders, stats, show_folder=True) for a in in_progress[:_CONTINUE_LIMIT]],
+                    cls="article-list"),
+                cls="library-section", id="continue-section",
+            ))
+        if tree:
+            sections.append(Section(
+                Div(
+                    H2("Folders", cls="library-section-title"),
+                    Button("Expand all", type="button", cls="link-btn", id="expand-all-folders"),
+                    Button("Collapse all", type="button", cls="link-btn", id="collapse-all-folders"),
+                    cls="library-section-head",
+                ),
+                *[
+                    _render_folder_node(name, node, all_folders, sort, folder_sort_overrides, stats)
+                    for name, node in _sorted_folder_entries(tree.items(), sort)
+                ],
+                cls="library-section",
+            ))
+        if root_articles:
+            sections.append(Section(
+                H2("Articles", cls="library-section-title") if has_folders or in_progress else "",
+                Div(*[_article_row(a, all_folders, stats) for a in root_articles], cls="article-list"),
+                cls="library-section",
+            ))
+        sections.append(P("No articles match your search.", id="search-empty", cls="empty-state", hidden=True))
+        body = Div(*sections, id="library-body")
+
     notice_banner = Div(notice, cls="notice-banner") if notice else ""
-    # Purely client-side (library.js toggles every .folder-group <details>'s
-    # `open` property directly) -- nothing to persist server-side, and this
-    # naturally reaches nested subfolders too since they share the same class.
-    folder_toggle_controls = (
-        Div(
-            Button("Expand all", type="button", cls="btn btn-sm", id="expand-all-folders"),
-            Button("Collapse all", type="button", cls="btn btn-sm", id="collapse-all-folders"),
-            cls="folder-toggle-all",
-        )
-        if has_folders else ""
-    )
     update_banner = (
         Div(
             Span(f"{APP_NAME} v{update_available} is available "),
@@ -352,32 +389,100 @@ def library_page(
         )
         if update_available else ""
     )
+    toolbar = (
+        Div(
+            Input(
+                type="search", id="library-search", placeholder="Search library",
+                aria_label="Search library", autocomplete="off",
+            ),
+            _sort_form(sort),
+            cls="library-toolbar",
+        )
+        if articles else ""
+    )
 
     return Html(
         _head(f"Library — {APP_NAME}"),
         Body(
-            _nav(),
+            _nav(lan_url),
             Main(
+                H1("Library", cls="visually-hidden"),
+                update_banner, notice_banner, toolbar, _lan_line(lan_url), body,
                 Div(
-                    H1("Library"),
-                    Div(folder_toggle_controls, _sort_form(sort), cls="library-header-controls"),
-                    cls="library-header",
+                    Div("Drop files to add them", cls="drop-overlay-title"),
+                    Div("", cls="drop-overlay-target"),
+                    id="drop-overlay", hidden=True,
                 ),
-                update_banner, lan_banner, notice_banner, body,
                 cls="container",
             ),
         ),
     )
 
 
-def _source_label(a):
-    """original_filename doubles as the source URL for source_type == "url"
-    articles, so render it as a link there instead of plain text."""
-    if not a.original_filename:
+_CONTINUE_LIMIT = 5
+
+
+@dataclass
+class ArticleStats:
+    """Per-article numbers for the library row, computed in app.py."""
+    minutes: float                 # whole article at 1.0x
+    progress: float | None = None  # 0-1, None if never played
+    minutes_left: float | None = None
+    finished: bool = False
+
+
+def _fmt_minutes(minutes: float) -> str:
+    m = round(minutes)
+    if m < 1:
+        return "<1 min"
+    if m < 60:
+        return f"{m} min"
+    return f"{m // 60} h {m % 60} min" if m % 60 else f"{m // 60} h"
+
+
+def _fmt_date(iso: str | None) -> str:
+    if not iso:
         return ""
-    if a.source_type == "url":
-        return A(a.original_filename, href=a.original_filename, cls="article-filename", target="_blank", rel="noopener noreferrer")
-    return Span(a.original_filename, cls="article-filename")
+    try:
+        d = datetime.fromisoformat(iso)
+    except ValueError:
+        return iso[:10]
+    fmt = "%b %-d" if d.year == datetime.now(timezone.utc).year else "%b %-d, %Y"
+    return d.strftime(fmt)
+
+
+def _lan_line(lan_url: str | None):
+    """One slim line with the address other devices on the network can use.
+    app.py only passes lan_url when you're browsing on the server machine
+    itself -- elsewhere you're already on that address."""
+    if not lan_url:
+        return ""
+    return Div(
+        Span("Open on your phone or another computer:"),
+        A(lan_url, href=lan_url, cls="lan-url-link"),
+        Button("Copy", type="button", cls="link-btn copy-lan-url", data_url=lan_url),
+        cls="lan-line",
+    )
+
+
+def _reader_source(a):
+    """Under the article title: a link to the original for web articles
+    (shown as just its site), else the uploaded filename."""
+    domain = _source_domain(a)
+    if domain:
+        return A(f"{domain} ↗", href=a.original_filename, cls="reader-source",
+                 target="_blank", rel="noopener noreferrer", title=a.original_filename)
+    if a.original_filename:
+        return Span(a.original_filename, cls="reader-source")
+    return ""
+
+
+def _source_domain(a) -> str:
+    """original_filename doubles as the source URL for "url" articles."""
+    if a.source_type != "url" or not a.original_filename:
+        return ""
+    host = urlparse(a.original_filename).hostname or ""
+    return host.removeprefix("www.")
 
 
 def _folder_move_form(a, all_folders: list[str]) -> Form:
@@ -393,37 +498,60 @@ def _folder_move_form(a, all_folders: list[str]) -> Form:
     )
 
 
-def _article_row(a, all_folders: list[str] | None = None) -> Div:
-    resume_pct = ""
-    if a.last_segment_index is not None and a.last_segment_index >= 0:
-        resume_pct = Span("in progress", cls="badge badge-progress")
-    filename_span = _source_label(a)
+def _article_row(a, all_folders: list[str] | None = None, stats: dict | None = None, show_folder: bool = False) -> Div:
+    st = (stats or {}).get(a.id)
+    domain = _source_domain(a)
+    # Most useful first, since the line is cut off with "…" on narrow screens.
+    meta = []
+    if st:
+        if st.progress is not None and not st.finished:
+            meta.append(f"{round(st.progress * 100)}% · {_fmt_minutes(st.minutes_left)} left")
+        elif st.finished:
+            meta.append("Finished")
+        else:
+            meta.append(_fmt_minutes(st.minutes))
+    if domain:
+        meta.append(domain)
+    if show_folder:
+        # "Continue listening" mixes articles from everywhere: name the
+        # folder (just its last part) instead of the date.
+        if a.folder:
+            meta.append(a.folder.rsplit("/", 1)[-1])
+    else:
+        meta.append(_fmt_date(a.created_at))
+    progress_bar = ""
+    if st and st.progress is not None:
+        pct = 100 if st.finished else round(st.progress * 100)
+        progress_bar = Div(Div(cls="progress-fill", style=f"width:{pct}%"), cls="progress-track", aria_hidden="true")
+
     menu_id = f"article-menu-{a.id}"
+    original = (
+        A("Open original", href=a.original_filename, target="_blank", rel="noopener noreferrer", cls="popover-item")
+        if domain else ""
+    )
+    search_text = " ".join(filter(None, [a.title or "", domain, a.folder or "", a.original_filename or ""])).lower()
     return Div(
-        Div(
-            A(a.title or "Untitled", href=f"/article/{a.id}", cls="article-title"),
-            Span(a.source_type, cls="badge"),
-            resume_pct,
-            filename_span,
-            cls="article-row-main",
+        A(
+            Span(a.title or "Untitled", cls="article-title"),
+            Span(" · ".join(m for m in meta if m), cls="article-meta", title=a.folder or None),
+            progress_bar,
+            href=f"/article/{a.id}", cls="article-link",
+        ),
+        Button(
+            "⋯", type="button", cls="kebab-btn",
+            popovertarget=menu_id, aria_label="Article actions",
         ),
         Div(
-            Span(a.created_at[:10] if a.created_at else "", cls="article-date"),
+            original,
+            _folder_move_form(a, all_folders or []),
             Button(
-                "⋯", type="button", cls="btn btn-sm kebab-btn",
-                popovertarget=menu_id, aria_label="Article actions",
+                "Delete", type="button", cls="popover-item popover-item-danger",
+                data_delete_id=str(a.id),
             ),
-            Div(
-                _folder_move_form(a, all_folders or []),
-                Button(
-                    "Delete", type="button", cls="popover-item popover-item-danger",
-                    data_delete_id=str(a.id),
-                ),
-                id=menu_id, popover="auto", cls="popover-menu",
-            ),
-            cls="article-row-meta",
+            id=menu_id, popover="auto", cls="popover-menu",
         ),
         cls="article-row",
+        data_search=search_text,
     )
 
 
@@ -684,7 +812,7 @@ def article_page(article, body_html: str, toc: list) -> Html:
                     Div(
                         Div(
                             H1(article.title or "Untitled"),
-                            _source_label(article),
+                            _reader_source(article),
                         ),
                         Div(
                             Button(

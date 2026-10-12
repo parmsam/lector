@@ -1,4 +1,5 @@
-// Library page interactions (delete, copy-LAN-url). Plain fetch()/DOM -- no
+// Library page interactions (delete, search, folders, drag-and-drop import,
+// copy-LAN-url). Plain fetch()/DOM -- no
 // htmx, no build step, consistent with player.js and the rest of this app's
 // no-external-JS approach (this app is meant to run fully on-device with no
 // CDN dependency).
@@ -18,8 +19,11 @@
         alert("Failed to delete article.");
         return;
       }
-      const row = btn.closest(".article-row");
-      if (row) row.remove();
+      // The same article can be listed twice (Continue listening + its
+      // folder), so remove every row for it, not just the clicked one.
+      document.querySelectorAll(`.article-row [data-delete-id="${id}"]`).forEach((b) => {
+        b.closest(".article-row")?.remove();
+      });
     } catch (err) {
       console.error("Delete failed:", err);
       alert("Failed to delete article.");
@@ -56,7 +60,7 @@
   });
 
   document.addEventListener("click", async (e) => {
-    const btn = e.target.closest("#copy-lan-url");
+    const btn = e.target.closest(".copy-lan-url");
     if (!btn) return;
 
     const url = btn.getAttribute("data-url");
@@ -144,15 +148,165 @@
     }
   });
 
-  // Expand/collapse every folder at once, including nested subfolders --
-  // they're all plain <details class="folder-group"> elements, so this is
-  // just flipping .open directly; nothing to persist server-side.
+  // ---- folder open/closed state ----
+  // Folders render collapsed; which ones this browser last had open is a
+  // per-viewer convenience kept in localStorage (wrapped in try/catch --
+  // storage can be unavailable in private windows). Not saved while a
+  // search is temporarily opening folders to show matches.
+  const OPEN_FOLDERS_KEY = "lector.openFolders";
+  const folderGroups = () => Array.from(document.querySelectorAll(".folder-group"));
+  let searching = false;
+
+  function loadOpenFolders() {
+    try { return new Set(JSON.parse(localStorage.getItem(OPEN_FOLDERS_KEY) || "[]")); }
+    catch (err) { return new Set(); }
+  }
+  function saveOpenFolders() {
+    if (searching) return;
+    const open = folderGroups().filter((d) => d.open).map((d) => d.dataset.folderPath);
+    try { localStorage.setItem(OPEN_FOLDERS_KEY, JSON.stringify(open)); } catch (err) { /* ignore */ }
+  }
+  function restoreOpenFolders() {
+    const open = loadOpenFolders();
+    folderGroups().forEach((d) => { d.open = open.has(d.dataset.folderPath); });
+  }
+  restoreOpenFolders();
+  // `toggle` doesn't bubble, hence capture.
+  document.addEventListener("toggle", (e) => {
+    if (e.target instanceof Element && e.target.classList.contains("folder-group")) saveOpenFolders();
+  }, true);
+
+  // Expand/collapse every folder at once, including nested subfolders.
   document.getElementById("expand-all-folders")?.addEventListener("click", () => {
-    document.querySelectorAll(".folder-group").forEach((d) => { d.open = true; });
+    folderGroups().forEach((d) => { d.open = true; });
   });
   document.getElementById("collapse-all-folders")?.addEventListener("click", () => {
-    document.querySelectorAll(".folder-group").forEach((d) => { d.open = false; });
+    folderGroups().forEach((d) => { d.open = false; });
   });
+
+  // ---- search: filters rows by title/domain/folder as you type ----
+  const searchInput = document.getElementById("library-search");
+  if (searchInput) {
+    const continueSection = document.getElementById("continue-section");
+    const emptyMsg = document.getElementById("search-empty");
+
+    const applySearch = () => {
+      const terms = searchInput.value.toLowerCase().split(/\s+/).filter(Boolean);
+      const wasSearching = searching;
+      searching = terms.length > 0;
+      if (!searching) {
+        document.querySelectorAll(".article-row, .folder-group, .library-section").forEach((el) => { el.hidden = false; });
+        if (emptyMsg) emptyMsg.hidden = true;
+        if (wasSearching) restoreOpenFolders();
+        return;
+      }
+      // Continue listening would only duplicate matches shown below.
+      if (continueSection) continueSection.hidden = true;
+      let matches = 0;
+      document.querySelectorAll("#library-body .article-row").forEach((row) => {
+        if (continueSection && continueSection.contains(row)) return;
+        const hay = row.dataset.search || "";
+        const hit = terms.every((t) => hay.includes(t));
+        row.hidden = !hit;
+        if (hit) matches++;
+      });
+      // Deepest folders first, so a parent sees its children's final state.
+      folderGroups().reverse().forEach((d) => {
+        const hasHit = d.querySelector(".article-row:not([hidden])") !== null;
+        d.hidden = !hasHit;
+        d.open = hasHit;
+      });
+      document.querySelectorAll(".library-section").forEach((sec) => {
+        if (sec === continueSection) return;
+        sec.hidden = sec.querySelector(".article-row:not([hidden])") === null;
+      });
+      if (emptyMsg) emptyMsg.hidden = matches > 0;
+    };
+    searchInput.addEventListener("input", applySearch);
+    searchInput.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { searchInput.value = ""; applySearch(); }
+    });
+    // "/" focuses search, like many sites; ignored while typing elsewhere.
+    document.addEventListener("keydown", (e) => {
+      const tag = (e.target.tagName || "").toLowerCase();
+      if (e.key === "/" && tag !== "input" && tag !== "textarea" && tag !== "select") {
+        e.preventDefault();
+        searchInput.focus();
+      }
+    });
+  }
+
+  // ---- drag-and-drop import onto the library page ----
+  // Drop files anywhere to add them unfiled, or onto a folder row to add
+  // them to that folder. Reuses the folder-upload endpoint (one or many
+  // files, optional folder_prefix), which redirects back here with a
+  // notice when done.
+  const overlay = document.getElementById("drop-overlay");
+  if (overlay) {
+    const overlayTarget = overlay.querySelector(".drop-overlay-target");
+    let dragDepth = 0;
+    let dropFolder = null;
+    let busy = false;
+
+    const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes("Files");
+    const setDropFolder = (group) => {
+      document.querySelectorAll(".folder-group.drop-target").forEach((g) => g.classList.remove("drop-target"));
+      dropFolder = group ? group.dataset.folderPath : null;
+      if (group) group.classList.add("drop-target");
+      overlayTarget.textContent = dropFolder ? `into “${dropFolder}”` : "unfiled — or drop onto a folder";
+    };
+    const hide = () => {
+      dragDepth = 0;
+      overlay.hidden = true;
+      setDropFolder(null);
+    };
+
+    document.addEventListener("dragenter", (e) => {
+      if (!hasFiles(e) || busy) return;
+      dragDepth++;
+      overlay.hidden = false;
+    });
+    document.addEventListener("dragover", (e) => {
+      if (!hasFiles(e) || busy) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      // Innermost folder under the pointer (open or collapsed).
+      setDropFolder(e.target.closest?.(".folder-group") || null);
+    });
+    document.addEventListener("dragleave", (e) => {
+      if (!hasFiles(e) || busy) return;
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) hide();
+    });
+    document.addEventListener("drop", async (e) => {
+      if (!hasFiles(e) || busy) return;
+      e.preventDefault();
+      const files = Array.from(e.dataTransfer.files || []);
+      const folder = dropFolder;
+      if (!files.length) { hide(); return; }
+
+      busy = true;
+      document.querySelectorAll(".folder-group.drop-target").forEach((g) => g.classList.remove("drop-target"));
+      overlay.querySelector(".drop-overlay-title").textContent =
+        `Adding ${files.length} file${files.length === 1 ? "" : "s"}…`;
+      overlayTarget.textContent = files.some((f) => /\.pdf$/i.test(f.name))
+        ? "PDFs can take a minute to convert"
+        : (folder ? `into “${folder}”` : "");
+
+      const form = new FormData();
+      files.forEach((f) => form.append("file", f, f.name));
+      if (folder) form.append("folder_prefix", folder);
+      try {
+        const resp = await fetch("/articles/upload-folder", { method: "POST", body: form });
+        window.location = resp.url; // follows the redirect to /?notice=... (or /add?error=...)
+      } catch (err) {
+        console.error("Drop upload failed:", err);
+        alert("Failed to add the dropped files.");
+        busy = false;
+        hide();
+      }
+    });
+  }
 
   const sortSelect = document.getElementById("sort-select");
   if (sortSelect) sortSelect.addEventListener("change", () => sortSelect.form.submit());

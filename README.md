@@ -13,7 +13,8 @@ everything runs on-device via Apple's MLX framework.
 
 This is a rewrite of a previous Tauri desktop-app version as a network-
 accessible web app with a real persistent article library. See `CLAUDE.md` for
-the architecture and `LEARNINGS.md` for the design decisions behind it.
+the architecture, `LEARNINGS.md` for the design decisions behind it, and
+`CHANGELOG.md` for what changed in each release.
 
 | Library | Reader |
 |:---:|:---:|
@@ -38,8 +39,12 @@ the architecture and `LEARNINGS.md` for the design decisions behind it.
   restarts. Add-by-URL can also be triggered by sharing a link straight from
   your phone's Share Sheet, see "Mobile: home screen + sharing links in" below
 - Organize articles into folders (nested, e.g. `Notes/Work`) -- move one from
-  its library-row dropdown, tag one on the way in from any "Add an article"
-  form, or upload a whole folder at once (subfolder structure preserved)
+  its library-row ⋯ menu, tag one on the way in from any "Add an article"
+  form, upload a whole folder at once (subfolder structure preserved), or
+  drag files straight onto the library (or onto a folder)
+- A compact library: "Continue listening" for what you're partway through,
+  listening time and progress on every article, and search across all
+  folders (press `/`)
 - Generated audio is cached to disk, so replaying an article (from the same
   device or another one on your network) is instant after the first listen
 - Reading progress (segment position, voice, speed) is saved server-side per

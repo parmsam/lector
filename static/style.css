@@ -68,6 +68,8 @@
 }
 
 * { box-sizing: border-box; }
+/* `hidden` must win over any element's own display rule (rows are flex). */
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -88,17 +90,12 @@ body {
 .nav-link { color: var(--fg); text-decoration: none; font-weight: 600; }
 .nav-add { color: var(--accent); }
 .nav-brand { display: flex; align-items: center; gap: 0.45rem; font-size: 1.05rem; }
-.nav-version {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  display: flex; flex-direction: column; align-items: center; gap: 0.1rem;
-  color: var(--fg-muted); font-size: 0.8rem; font-family: ui-monospace, monospace;
-  text-align: center;
+.nav-menu-btn {
+  background: none; border: 1px solid var(--border); border-radius: 8px;
+  width: 2.5rem; height: 2.5rem; font-size: 1.1rem; font-weight: 700; line-height: 1;
+  color: var(--fg); cursor: pointer; padding: 0;
 }
-.nav-version-check {
-  font-size: 0.7rem; font-family: system-ui, sans-serif;
-  color: var(--fg-muted); text-decoration: underline;
-}
-.nav-version-check:hover { color: var(--accent); }
+.nav-menu-btn:hover, .theme-toggle:hover { border-color: var(--accent); }
 .brand-logo { display: block; border-radius: 5px; }
 .brand-name { letter-spacing: -0.01em; }
 .theme-toggle {
@@ -150,22 +147,6 @@ body {
   opacity: 0.5; cursor: default;
 }
 
-.library-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
-.library-header-controls { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
-.folder-toggle-all { display: flex; gap: 0.4rem; }
-.sort-form label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--fg-muted); }
-.sort-form select {
-  padding: 0.35rem 1.75rem 0.35rem 0.6rem; font-size: 0.85rem;
-}
-
-.lan-banner {
-  display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-  padding: 0.6rem 1rem; margin: 1rem 0; font-size: 0.9rem; color: var(--fg-muted);
-}
-.lan-banner-label { white-space: nowrap; }
-.lan-url-link { color: var(--accent); font-family: ui-monospace, monospace; font-size: 0.85rem; word-break: break-all; }
-
 .notice-banner {
   background: var(--surface); border: 1px solid var(--accent); color: var(--fg);
   border-radius: 8px; padding: 0.6rem 1rem; margin: 1rem 0; font-size: 0.9rem;
@@ -177,16 +158,6 @@ body {
 }
 .update-banner a { color: var(--accent); }
 
-.article-list { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; }
-.article-row {
-  display: flex; justify-content: space-between; align-items: center; gap: 1rem;
-  padding: 0.85rem 1rem; border: 1px solid var(--border); border-radius: 8px;
-}
-.article-row-main { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
-.article-title { color: var(--fg); text-decoration: none; font-weight: 600; }
-.article-row-meta { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; justify-content: flex-end; }
-.article-date { color: var(--fg-muted); font-size: 0.85rem; }
-
 .folder-move-form { display: inline-flex; }
 .folder-select {
   padding: 0.3rem 1.6rem 0.3rem 0.5rem; font-size: 0.8rem;
@@ -197,9 +168,6 @@ body {
    click-outside/Escape dismissal and top-layer stacking for free -- it
    just needs its *open* appearance styled; :popover-open handles hiding it
    otherwise via the UA stylesheet already. */
-.kebab-btn {
-  font-size: 1.1rem !important; font-weight: 700; padding: 0.2rem 0.6rem !important; line-height: 1;
-}
 .popover-menu {
   position: fixed; margin: 0; padding: 0.4rem; border: 1px solid var(--border); border-radius: 8px;
   background: var(--bg); color: var(--fg); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
@@ -217,31 +185,109 @@ body {
 }
 .popover-item:hover { background: var(--surface); }
 .popover-item-danger { color: var(--danger); }
+a.popover-item { text-decoration: none; }
+.popover-label { display: block; padding: 0.3rem 0.5rem 0; font-size: 0.8rem; color: var(--fg-muted); }
+.popover-sep { border: none; border-top: 1px solid var(--border); margin: 0.25rem 0; width: 100%; }
+.lan-url-link { color: var(--accent); font-family: ui-monospace, monospace; font-size: 0.85rem; word-break: break-all; }
 
-.folder-group {
-  border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1rem;
-  margin-bottom: 0.75rem;
+/* ---- library ---- */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
 }
-/* Collapsed, a folder is just its one-line summary -- the open-state
-   padding (sized to comfortably frame the article list/subfolders inside)
-   otherwise reads as oversized whitespace around that single line. */
-.folder-group:not([open]) { padding: 0.5rem 1rem; }
-.folder-group .folder-group { margin: 0.75rem 0 0 1.25rem; }
+.library-toolbar { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; }
+#library-search {
+  flex: 1; min-width: 0; background: var(--surface); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.75rem; font: inherit; font-size: 0.95rem;
+}
+#library-search:focus-visible {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.sort-form label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--fg-muted); }
+@media (max-width: 600px) { .sort-label { display: none; } }
+.sort-form select { padding: 0.5rem 1.75rem 0.5rem 0.6rem; font-size: 0.85rem; border-radius: 8px; }
+
+.lan-line {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.5rem;
+  font-size: 0.8rem; color: var(--fg-muted); margin: 0.25rem 0 0;
+}
+.lan-line .lan-url-link { font-size: 0.8rem; }
+.library-section { margin-top: 1.5rem; }
+.library-section-head { display: flex; align-items: baseline; gap: 0.75rem; }
+.library-section-head .library-section-title { margin-right: auto; }
+.library-section-title {
+  font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--fg-muted); margin: 0 0 0.35rem;
+}
+.link-btn {
+  background: none; border: none; padding: 0; color: var(--fg-muted); font-size: 0.8rem; cursor: pointer;
+}
+.link-btn:hover { color: var(--accent); }
+
+.article-list { display: flex; flex-direction: column; }
+.article-row {
+  display: flex; align-items: center; gap: 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.article-link {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem;
+  padding: 0.6rem 0.5rem; margin: 0 -0.5rem; border-radius: 6px;
+  color: var(--fg); text-decoration: none;
+}
+.article-link:hover { background: var(--surface); }
+.article-title {
+  font-weight: 600; line-height: 1.35; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.article-meta {
+  color: var(--fg-muted); font-size: 0.8rem; line-height: 1.4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.progress-track { height: 3px; border-radius: 2px; background: var(--border); margin-top: 0.3rem; max-width: 12rem; }
+.progress-fill { height: 100%; border-radius: 2px; background: var(--accent); }
+
+.kebab-btn {
+  flex-shrink: 0; background: none; border: none; border-radius: 6px; color: var(--fg-muted);
+  font-size: 1.1rem; font-weight: 700; line-height: 1; padding: 0.35rem 0.55rem; cursor: pointer;
+}
+.kebab-btn:hover, .kebab-btn:focus-visible { background: var(--surface); color: var(--fg); }
+/* Hover-only on devices that have hover; always visible on touch screens. */
+@media (hover: hover) {
+  .article-row .kebab-btn, .folder-group > summary .kebab-btn { opacity: 0; }
+  .article-row:hover .kebab-btn, .folder-group > summary:hover .kebab-btn,
+  .kebab-btn:focus-visible, .kebab-btn:has(+ :popover-open) { opacity: 1; }
+}
+
+details.folder-group { border: none; border-radius: 0; padding: 0; margin: 0; }
 .folder-group > summary {
-  display: flex; align-items: center; gap: 0.5rem; font-weight: 600; cursor: pointer; flex-wrap: wrap;
+  list-style: none; display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.55rem 0; border-bottom: 1px solid var(--border); font-weight: 600; cursor: pointer;
 }
-.folder-name { flex: 1; }
-.folder-count { color: var(--fg-muted); font-weight: 400; font-size: 0.85rem; }
-.folder-sort-select {
-  padding: 0.2rem 1.5rem 0.2rem 0.5rem; font-size: 0.75rem;
+.folder-group > summary::-webkit-details-marker { display: none; }
+.folder-chevron {
+  width: 0.9rem; flex-shrink: 0; color: var(--fg-muted); font-size: 0.7rem;
+  transition: transform 0.15s ease; display: inline-block;
 }
-.folder-group > .article-list { margin-top: 0.75rem; }
-.badge {
-  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em;
-  background: var(--surface); color: var(--fg-muted); padding: 0.15rem 0.5rem; border-radius: 999px;
+.folder-chevron::before { content: "▶"; }
+.folder-group[open] > summary .folder-chevron { transform: rotate(90deg); }
+.folder-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.folder-count {
+  color: var(--fg-muted); font-weight: 400; font-size: 0.8rem;
+  background: var(--surface); border-radius: 999px; padding: 0 0.5rem;
 }
-.badge-progress { background: var(--accent); color: var(--accent-fg); }
-.article-filename { color: var(--fg-muted); font-size: 0.8rem; font-family: ui-monospace, monospace; }
+.folder-contents { padding-left: 1.4rem; }
+.folder-sort-select { padding: 0.2rem 1.5rem 0.2rem 0.5rem; font-size: 0.75rem; }
+
+#drop-overlay {
+  position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; gap: 0.4rem;
+  align-items: center; justify-content: center; pointer-events: none;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  border: 3px dashed var(--accent); border-radius: 12px; margin: 0.5rem;
+}
+#drop-overlay[hidden] { display: none; }
+.drop-overlay-title { font-size: 1.3rem; font-weight: 700; }
+.drop-overlay-target { color: var(--fg-muted); }
+.folder-group.drop-target > summary { background: color-mix(in srgb, var(--accent) 15%, transparent); border-radius: 6px; }
 
 .add-form { display: flex; flex-direction: column; gap: 0.75rem; margin: 1rem 0 1.5rem; }
 .add-form label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.9rem; color: var(--fg-muted); }
@@ -311,15 +357,14 @@ main.reader-main { padding-bottom: var(--player-bar-space); }
      normal mobile spacing here, not a second player-bar-sized guess. */
   .container { padding: 1rem 1rem 1.5rem; }
   .topnav { padding: 0.6rem 1rem; }
-  .nav-version { display: none; }
-  .article-row { flex-wrap: wrap; row-gap: 0.5rem; }
-  .article-row-meta { margin-left: auto; }
   .resume-banner { flex-wrap: wrap; }
 }
 
 .reader-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 .reader-header h1 { margin-bottom: 0.15rem; overflow-wrap: anywhere; }
 .reader-header-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+.reader-source { color: var(--fg-muted); font-size: 0.85rem; text-decoration: none; overflow-wrap: anywhere; }
+a.reader-source:hover { color: var(--accent); }
 .edit-note { color: var(--fg-muted); font-size: 0.9rem; }
 
 .doc-body pre { background: var(--surface); padding: 1rem; border-radius: 8px; overflow-x: auto; }
