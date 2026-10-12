@@ -10,6 +10,20 @@ use the section as the GitHub release notes.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-12
+
+### Fixed
+- Page-number markers from PDF conversion (`<span id="page-182-0"></span>`)
+  no longer show up as literal text in headings, the table of contents or
+  the spoken text. A heading or paragraph that started with one was being
+  skipped entirely during playback; it's now read aloud.
+- The table of contents sidebar now stops above the player bar, so its last
+  entries are no longer hidden behind it.
+
+Some PDF-imported articles are split into sentences slightly differently
+now, so their cached audio regenerates on first play and a saved reading
+position may shift a little.
+
 ## [1.2.0] - 2026-10-12
 
 ### Changed
@@ -84,7 +98,8 @@ First tagged release of the rewrite as a network-accessible web app.
 - Mobile support: Add to Home Screen, Android/iOS share target for adding
   links, light/dark theme.
 
-[Unreleased]: https://github.com/parmsam/markdown-reader2/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/parmsam/markdown-reader2/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/parmsam/markdown-reader2/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/parmsam/markdown-reader2/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/parmsam/markdown-reader2/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/parmsam/markdown-reader2/releases/tag/v1.0.0
