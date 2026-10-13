@@ -16,8 +16,13 @@ use the section as the GitHub release notes.
   which keeps working when the LAN IP changes. The README now explains that
   home screen installs are tied to the address they were installed from, and
   how to keep that address stable.
+- Background playback: reading keeps going when you switch tabs or apps or
+  lock the phone, and the lock screen, Control Center and headphone buttons
+  can play/pause, skip sentences and scrub the current sentence.
 
 ### Changed
+- Pausing and then playing again resumes mid-sentence instead of restarting
+  the sentence.
 - The project is renamed from `markdown-reader2` to `lector` to match the
   app's name: the GitHub repo is now
   [parmsam/lector](https://github.com/parmsam/lector) (old links redirect),

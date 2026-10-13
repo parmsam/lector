@@ -60,7 +60,7 @@ the architecture, `LEARNINGS.md` for the design decisions behind it, and
 | Text -> phonemes | [misaki](https://github.com/hexgrad/misaki) + spaCy + num2words + phonemizer/espeak-ng |
 | PDF -> Markdown | [marker-pdf](https://github.com/VikParuchuri/marker) (OCR + layout parsing) |
 | Markdown -> HTML | [markdown-it-py](https://github.com/executablebooks/markdown-it-py) |
-| Frontend | Plain vanilla JavaScript, no build step, no framework (Web Audio API for playback/highlighting) |
+| Frontend | Plain vanilla JavaScript, no build step, no framework (an `<audio>` element + Media Session API for playback, background play and lock-screen controls) |
 | Packaging | [uv](https://github.com/astral-sh/uv) |
 
 ## Requirements

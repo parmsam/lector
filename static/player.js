@@ -7,6 +7,10 @@
 
   const ARTICLE_ID = window.ARTICLE_ID;
   const LOOKAHEAD = 2;
+  // While the page is hidden (other tab/app, locked screen) nobody's tapping
+  // around the document, so prefetch further ahead: a gap waiting on Kokoro
+  // between sentences is what risks iOS dropping the background audio session.
+  const HIDDEN_LOOKAHEAD = 6;
   const AUTO_SCROLL_IDLE_MS = 2500;
   // Read from the rendered speed buttons rather than hardcoding a second
   // copy of components.py's SPEEDS list here (used by the [ / ] shortcuts).
@@ -47,25 +51,33 @@
   });
   const totalSegments = segEls.length;
 
+  // ---- the one media element all playback goes through ----
+  // A real <audio> element, not the Web Audio API: iOS Safari suspends an
+  // AudioContext as soon as the page is hidden, but keeps a playing media
+  // element going in the background, and only media elements get lock-screen
+  // / Control Center controls via the Media Session API (see below). Its
+  // server-rendered src is a tiny silent WAV (components.py's
+  // SILENT_WAV_DATA_URI), reused by holdAudioSession().
+  const audioEl = document.getElementById("player-audio");
+  const SILENT_SRC = audioEl.getAttribute("src");
+  const hasMediaSession = "mediaSession" in navigator;
+
   // ---- state ----
-  let audioCtx = null;
-  let currentSource = null;
-  let wordTimer = null;
-  const cacheMap = new Map(); // segmentIndex -> {buffer, wordTimings, duration}
+  let loadedSegment = -1; // segment whose audio is in audioEl (-1: none / silence)
+  let segmentEndHandler = null; // what audioEl's "ended" does next -- see startAudio()
+  const cacheMap = new Map(); // segmentIndex -> {url (blob: WAV), wordTimings, duration}
   const pending = new Map(); // segmentIndex -> in-flight fetch Promise (see fetchSegment)
-  let gen = 0; // monotonic generation counter -- see scheduleWordHighlights/playSegment
+  let gen = 0; // monotonic generation counter -- see playSegment/startAudio
   let currentSegment = -1;
   let currentWordEl = null;
+  let currentWordIdx = -1;
   let playing = false;
   let voice = window.INITIAL_VOICE || "af_heart";
   let speed = window.INITIAL_SPEED || 1.0;
   let userScrolling = false;
   let userScrollTimer = null;
-  // Playhead: when the current segment's AudioBufferSourceNode started,
-  // in the AudioContext's own clock (ctx.currentTime), so elapsed time is
-  // always just `ctx.currentTime - segmentStartedAt` -- recomputed on every
-  // seek so it stays correct relative to the *new* source's start point.
-  let segmentStartedAt = 0;
+  // Playhead: elapsed time within the current segment is just
+  // audioEl.currentTime (each segment is its own src).
   let segmentDuration = 0;
   let playheadDragging = false;
 
@@ -128,30 +140,68 @@
     return Math.max(0, segmentDurations.length - 1);
   }
 
-  function getAudioContext() {
-    if (!audioCtx || audioCtx.state === "closed") {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    return audioCtx;
+  function lookahead() {
+    return document.hidden ? HIDDEN_LOOKAHEAD : LOOKAHEAD;
   }
 
-  // ---- iOS silent-switch unlock ----
-  // iOS Safari puts pages that only use the Web Audio API into the "ambient"
-  // audio session category, which the hardware ring/silent switch mutes.
-  // Playing any HTML <audio> element (even silent) flips the page into the
-  // "playback" category for the rest of the session, so subsequent
-  // AudioBufferSourceNode playback is audible with the switch on silent too.
-  // Must run synchronously inside a real user-gesture handler.
-  let audioUnlocked = false;
-  function unlockAudio() {
-    if (audioUnlocked) return;
-    audioUnlocked = true;
-    getAudioContext().resume().catch(() => {});
-    const el = document.getElementById("ios-audio-unlock");
-    if (el) el.play().catch(() => {});
+  // ---- driving audioEl ----
+  // iOS only lets a media element play() from a user gesture until it has
+  // played once; after that the same element can be play()ed from anywhere
+  // (async fetch callbacks, "ended" handlers, lock-screen controls). Every
+  // path that starts playback reaches audioEl.play() or holdAudioSession()
+  // synchronously from its click/keydown, so the first gesture unlocks it.
+  function playAudioEl() {
+    audioEl.play().catch((e) => {
+      // AbortError just means src changed mid-play (a newer segment won).
+      if (e.name === "NotAllowedError") pause();
+    });
   }
-  document.addEventListener("pointerdown", unlockAudio, { once: true, passive: true });
-  document.addEventListener("keydown", unlockAudio, { once: true });
+
+  function startAudio(index, entry, offset, myGen) {
+    audioEl.loop = false;
+    if (loadedSegment !== index || audioEl.getAttribute("src") !== entry.url) {
+      audioEl.src = entry.url;
+      loadedSegment = index;
+    }
+    if (offset > 0) {
+      if (audioEl.readyState >= 1) audioEl.currentTime = offset;
+      else audioEl.addEventListener("loadedmetadata", () => { audioEl.currentTime = offset; }, { once: true });
+    } else if (audioEl.currentTime !== 0) {
+      audioEl.currentTime = 0;
+    }
+    segmentDuration = entry.duration;
+    currentWordIdx = -1;
+    segmentEndHandler = () => {
+      if (gen === myGen) playSegment(index + 1, myGen);
+    };
+    playAudioEl();
+    updateMediaPositionState(offset);
+  }
+
+  // While the next sentence is still being generated, loop silence instead
+  // of letting audioEl go idle: a paused/ended element in a hidden page is
+  // how iOS decides the page is done playing and suspends it mid-article.
+  function holdAudioSession() {
+    segmentEndHandler = null;
+    loadedSegment = -1;
+    audioEl.loop = true;
+    if (audioEl.getAttribute("src") !== SILENT_SRC) audioEl.src = SILENT_SRC;
+    playAudioEl();
+  }
+
+  audioEl.addEventListener("ended", () => {
+    const next = segmentEndHandler;
+    segmentEndHandler = null;
+    if (next) next();
+  });
+  // A segment's audio failing to load/decode: skip it, same as a failed fetch.
+  audioEl.addEventListener("error", () => {
+    if (loadedSegment < 0) return;
+    console.error(`Audio playback error for segment ${loadedSegment}`, audioEl.error);
+    const next = segmentEndHandler;
+    segmentEndHandler = null;
+    if (next) next();
+  });
 
   // ---- fetch + cache (in-memory, per-page; separate from the server disk cache:
   // this one saves a redundant HTTP round-trip within one page session, the disk
@@ -177,10 +227,9 @@
           fetch(`/api/tts/${ARTICLE_ID}/${index}/timings${qs}`),
         ]);
         if (!audioResp.ok || !timingsResp.ok) throw new Error("tts fetch failed");
-        const arrayBuffer = await audioResp.arrayBuffer();
+        const blob = await audioResp.blob();
         const timings = await timingsResp.json();
-        const audioBuffer = await getAudioContext().decodeAudioData(arrayBuffer);
-        cacheMap.set(index, { buffer: audioBuffer, wordTimings: timings.word_timings, duration: timings.duration });
+        cacheMap.set(index, { url: URL.createObjectURL(blob), wordTimings: timings.word_timings, duration: timings.duration });
         recordRealDuration(index, timings.duration);
       } catch (e) {
         console.error(`TTS error for segment ${index}:`, e);
@@ -192,19 +241,18 @@
     return promise;
   }
 
+  // Nulling segmentEndHandler first keeps the stopped segment from also
+  // (wrongly) advancing to the next one on its own.
   function stopAudio() {
-    if (currentSource) {
-      try {
-        currentSource.onended = null;
-        currentSource.stop();
-        currentSource.disconnect();
-      } catch (_) {}
-      currentSource = null;
-    }
-    if (wordTimer) {
-      clearTimeout(wordTimer);
-      wordTimer = null;
-    }
+    segmentEndHandler = null;
+    audioEl.pause();
+  }
+
+  // Voice/speed changed: every cached segment is for the old settings.
+  function clearSegmentCache() {
+    for (const entry of cacheMap.values()) URL.revokeObjectURL(entry.url);
+    cacheMap.clear();
+    loadedSegment = -1;
   }
 
   // ---- word / sentence highlighting ----
@@ -287,6 +335,7 @@
     }
     currentSegment = index;
     currentWordEl = null;
+    currentWordIdx = -1;
     if (index >= 0 && segEls[index]) {
       const el = segEls[index];
       el.classList.add("sentence-active");
@@ -296,6 +345,7 @@
     updateDocSeekUI(0);
     syncNowPlaying();
     updateTocActive(index);
+    updateMediaMetadata();
     postProgress();
   }
 
@@ -309,21 +359,23 @@
     syncNowPlaying();
   }
 
-  function scheduleWordHighlights(el, wordTimings, startedAt, segIndex, myGen) {
-    const ctx = audioCtx;
-    const scheduleNext = (wordIdx) => {
-      if (gen !== myGen) return;
-      if (wordIdx >= wordTimings.length) return;
-      const timing = wordTimings[wordIdx];
-      const elapsed = ctx.currentTime - startedAt;
-      const delay = (timing.start - elapsed) * 1000;
-      wordTimer = setTimeout(() => {
-        if (gen !== myGen || currentSegment !== segIndex) return;
-        setActiveWord(el, wordIdx);
-        scheduleNext(wordIdx + 1);
-      }, Math.max(0, delay));
-    };
-    scheduleNext(0);
+  // Called every animation frame (tickPlayhead) with the current segment's
+  // elapsed time. Polling audioEl.currentTime rather than scheduling timers
+  // means seeks need no rescheduling, and when the page is hidden (no
+  // animation frames) highlighting just pauses and picks up at the right
+  // word when you come back.
+  function updateWordHighlight(elapsed) {
+    const entry = cacheMap.get(currentSegment);
+    const el = segEls[currentSegment];
+    if (!entry || !el || !entry.wordTimings) return;
+    let idx = -1;
+    for (let i = 0; i < entry.wordTimings.length; i++) {
+      if (entry.wordTimings[i].start <= elapsed) idx = i; else break;
+    }
+    if (idx >= 0 && idx !== currentWordIdx) {
+      currentWordIdx = idx;
+      setActiveWord(el, idx);
+    }
   }
 
   // ---- auto-scroll with manual-scroll override ----
@@ -407,10 +459,11 @@
   }
 
   function tickPlayhead() {
-    if (playing && currentSource && audioCtx) {
-      const elapsed = Math.max(0, Math.min(audioCtx.currentTime - segmentStartedAt, segmentDuration));
+    if (playing && loadedSegment >= 0 && loadedSegment === currentSegment) {
+      const elapsed = Math.max(0, Math.min(audioEl.currentTime, segmentDuration));
       updatePlayheadUI(elapsed, segmentDuration);
       updateDocSeekUI(elapsed);
+      updateWordHighlight(elapsed);
     }
     requestAnimationFrame(tickPlayhead);
   }
@@ -421,6 +474,7 @@
   async function playSegment(index, myGen) {
     if (gen !== myGen) return;
     if (index >= totalSegments) {
+      stopAudio();
       setActiveSegment(-1);
       segmentDuration = 0;
       updatePlayheadUI(0, 0);
@@ -435,7 +489,7 @@
     }
 
     setActiveSegment(index);
-    for (let i = 1; i <= LOOKAHEAD; i++) fetchSegment(index + i);
+    for (let i = 1; i <= lookahead(); i++) fetchSegment(index + i);
 
     if (segTypes[index] === "code") {
       if (gen === myGen) await playSegment(index + 1, myGen);
@@ -446,6 +500,7 @@
       // Audio for this sentence is still being generated: show it, so the
       // pause before playback doesn't look like a hang.
       segEls[index]?.classList.add("seg-loading");
+      holdAudioSession();
       await fetchSegment(index);
       segEls[index]?.classList.remove("seg-loading");
     }
@@ -458,77 +513,25 @@
       return;
     }
 
-    try {
-      const ctx = getAudioContext();
-      if (ctx.state === "suspended") {
-        await ctx.resume();
-        if (gen !== myGen) return;
-      }
-      stopAudio();
-      const source = ctx.createBufferSource();
-      source.buffer = entry.buffer;
-      source.connect(ctx.destination);
-      currentSource = source;
-      const startedAt = ctx.currentTime;
-      segmentStartedAt = startedAt;
-      segmentDuration = entry.duration;
-      updatePlayheadUI(0, entry.duration);
-      updateDocSeekUI(0);
-      source.start();
-      scheduleWordHighlights(segEls[index], entry.wordTimings, startedAt, index, myGen);
-
-      await new Promise((resolve) => { source.onended = resolve; });
-      if (gen !== myGen) return;
-      currentSource = null;
-      await playSegment(index + 1, myGen);
-    } catch (e) {
-      console.error("Audio playback error:", e);
-      if (gen === myGen) await playSegment(index + 1, myGen);
-    }
+    updatePlayheadUI(0, entry.duration);
+    updateDocSeekUI(0);
+    startAudio(index, entry, 0, myGen);
   }
 
   // Reposition playback within the currently-active segment (dragging the
-  // playhead), rather than starting a whole new session from segment 0's
-  // lookahead the way jumpTo()/startSession() do. Web Audio has no native
-  // seek -- an AudioBufferSourceNode plays the buffer it's given starting
-  // from source.start()'s *offset* argument, so seeking means swapping in a
-  // fresh source at the new offset. Always resumes playback (matches how
-  // dragging a scrubber reads on most audio players); nulling the old
-  // source's onended before stopping it, exactly like stopAudio(), keeps it
-  // from also (wrongly) advancing to the next segment on its own.
+  // playhead, a lock-screen scrub, or resuming after pause), rather than
+  // starting a whole new session the way jumpTo()/startSession() do. Always
+  // resumes playback (matches how dragging a scrubber reads on most audio
+  // players). Bumps gen so a still-loading segment from before can't take
+  // over once its fetch lands.
   function seekWithinSegment(offsetSeconds) {
     if (currentSegment < 0) return;
     const entry = cacheMap.get(currentSegment);
     if (!entry) return;
-    const myGen = gen;
-    const ctx = getAudioContext();
+    const myGen = ++gen;
     const clamped = Math.max(0, Math.min(offsetSeconds, Math.max(0, entry.duration - 0.02)));
-
-    if (currentSource) {
-      try {
-        currentSource.onended = null;
-        currentSource.stop();
-        currentSource.disconnect();
-      } catch (_) {}
-      currentSource = null;
-    }
-    if (wordTimer) { clearTimeout(wordTimer); wordTimer = null; }
-
-    if (ctx.state === "suspended") ctx.resume().catch(() => {});
-    const source = ctx.createBufferSource();
-    source.buffer = entry.buffer;
-    source.connect(ctx.destination);
-    currentSource = source;
-    segmentStartedAt = ctx.currentTime - clamped;
-    segmentDuration = entry.duration;
-    source.start(0, clamped);
-    scheduleWordHighlights(segEls[currentSegment], entry.wordTimings, segmentStartedAt, currentSegment, myGen);
-    source.onended = () => {
-      if (gen !== myGen || currentSource !== source) return;
-      currentSource = null;
-      playSegment(currentSegment + 1, myGen);
-    };
     setPlayingUI(true);
+    startAudio(currentSegment, entry, clamped, myGen);
     updatePlayheadUI(clamped, entry.duration);
     updateDocSeekUI(clamped);
   }
@@ -536,12 +539,23 @@
   function startSession(fromSegment) {
     const myGen = ++gen;
     stopAudio();
-    for (let i = 0; i <= LOOKAHEAD; i++) fetchSegment(fromSegment + i);
+    for (let i = 0; i <= lookahead(); i++) fetchSegment(fromSegment + i);
     playSegment(fromSegment, myGen);
+  }
+
+  // Paused partway through the sentence that's still loaded? Pick up where
+  // it left off instead of restarting the sentence.
+  function canResumeInPlace(index) {
+    return index === currentSegment && loadedSegment === index && cacheMap.has(index)
+      && !audioEl.ended && audioEl.currentTime > 0;
   }
 
   function play(fromSegment) {
     const startAt = fromSegment !== undefined ? fromSegment : Math.max(0, currentSegment);
+    if (canResumeInPlace(startAt)) {
+      seekWithinSegment(audioEl.currentTime);
+      return;
+    }
     setPlayingUI(true);
     startSession(startAt);
   }
@@ -549,7 +563,6 @@
   function pause() {
     gen++; // invalidate in-flight session
     stopAudio();
-    if (audioCtx) audioCtx.suspend();
     setPlayingUI(false);
   }
 
@@ -590,7 +603,7 @@
 
   function setSpeed(newSpeed) {
     speed = newSpeed;
-    cacheMap.clear();
+    clearSegmentCache();
     // Forget in-flight fetches too (not cancel them -- fetch() has no abort wired
     // here -- but a stale one finishing later just writes an orphaned cacheMap
     // entry for an index nobody reads under the new voice/speed context; a fresh
@@ -606,7 +619,7 @@
 
   function setVoice(newVoice) {
     voice = newVoice;
-    cacheMap.clear();
+    clearSegmentCache();
     // Forget in-flight fetches too (not cancel them -- fetch() has no abort wired
     // here -- but a stale one finishing later just writes an orphaned cacheMap
     // entry for an index nobody reads under the new voice/speed context; a fresh
@@ -622,7 +635,68 @@
     playing = isPlaying;
     const btn = document.getElementById("btn-play-pause");
     if (btn) btn.textContent = isPlaying ? "⏸" : "▶";
+    if (hasMediaSession) navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
   }
+
+  // ---- Media Session: lock screen / Control Center / headphone controls.
+  // Previous/next track step by sentence, like the ⏮/⏭ buttons; the
+  // scrubber is the current sentence, like #playhead-seek. ----
+  const articleTitle = document.querySelector(".reader-header h1")?.textContent || document.title;
+  let mediaSectionTitle = null;
+
+  function updateMediaMetadata() {
+    if (!hasMediaSession || typeof MediaMetadata === "undefined") return;
+    const section = tocCurrentEl?.textContent || "";
+    if (section === mediaSectionTitle) return;
+    mediaSectionTitle = section;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: articleTitle,
+      artist: section || "Lector",
+      album: "Lector",
+      artwork: [{ src: "/static/icon-512.png", sizes: "512x512", type: "image/png" }],
+    });
+  }
+
+  function updateMediaPositionState(position) {
+    if (!hasMediaSession || !navigator.mediaSession.setPositionState) return;
+    try {
+      if (!segmentDuration) {
+        navigator.mediaSession.setPositionState();
+        return;
+      }
+      navigator.mediaSession.setPositionState({
+        duration: segmentDuration,
+        playbackRate: 1,
+        position: Math.max(0, Math.min(position, segmentDuration)),
+      });
+    } catch (_) { /* older browsers throw on any invalid combination */ }
+  }
+
+  if (hasMediaSession) {
+    const handlers = {
+      play: () => play(currentSegment >= 0 ? currentSegment : 0),
+      pause: () => pause(),
+      stop: () => stop(),
+      previoustrack: () => skipBack(),
+      nexttrack: () => skipForward(),
+      seekto: (details) => { if (details.seekTime != null) seekWithinSegment(details.seekTime); },
+    };
+    for (const [action, handler] of Object.entries(handlers)) {
+      try { navigator.mediaSession.setActionHandler(action, handler); } catch (_) { /* unsupported action */ }
+    }
+  }
+
+  // Coming back to the page: catch the document up with wherever playback
+  // got to while it was hidden. While hidden, prefetch further ahead.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      if (playing && currentSegment >= 0) {
+        for (let i = 1; i <= lookahead(); i++) fetchSegment(currentSegment + i);
+      }
+    } else if (currentSegment >= 0 && segEls[currentSegment]) {
+      maybeAutoScroll(segEls[currentSegment]);
+    }
+  });
 
   let progressTimer = null;
   function postProgress() {

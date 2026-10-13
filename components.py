@@ -53,12 +53,11 @@ APP_VERSION = tomllib.loads(
 # it, see LEARNINGS.md).
 _STATIC_VERSION = str(int(time.time()))
 
-# A ~0.1s silent WAV, played (looped) on first touch/click on iOS. iOS Safari
-# puts pages that only use the Web Audio API into the "ambient" audio session
-# category, which is muted by the hardware ring/silent switch; playing *any*
-# HTML <audio> element flips the page into the "playback" category for the
-# rest of the session, so our AudioBufferSourceNode-based playback is audible
-# even with the switch flipped to silent. See player.js's unlockAudio().
+# A ~0.1s silent WAV: the initial src of the reader's one <audio> element
+# (#player-audio). player.js loops it while the next sentence is still being
+# generated (holdAudioSession()), so the element never sits idle mid-article
+# -- an idle media element in a hidden page is how iOS decides background
+# playback is over. Inline data URI, so no extra network request.
 SILENT_WAV_DATA_URI = (
     "data:audio/wav;base64,"
     + "UklGRmQGAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YUAGAAAAAAAAAAAAAAAAAAAA"
@@ -894,10 +893,12 @@ def article_page(article, body_html: str, toc: list) -> Html:
                 cls="reader-layout",
             ),
             player_bar(voice, speed),
+            # All playback goes through this element (see player.js): unlike
+            # the Web Audio API, a media element keeps playing on iOS when the
+            # page is hidden, and gets lock-screen controls.
             Audio(
-                id="ios-audio-unlock",
+                id="player-audio",
                 src=SILENT_WAV_DATA_URI,
-                loop=True,
                 playsinline=True,
                 preload="auto",
                 style="display:none",

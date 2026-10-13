@@ -77,9 +77,11 @@ static/style.css  Layout + theme (light/dark via prefers-color-scheme and a
    (already loaded at startup -- this is just a reference), generates audio
    (with retry/bisect on the known MLX decoder bug), estimates word timings,
    writes the cache files, and returns.
-5. `player.js` decodes the WAV via Web Audio's `decodeAudioData`, plays it via
-   an `AudioBufferSourceNode`, and schedules word-highlight callbacks against
-   the timings JSON.
+5. `player.js` wraps the WAV in a blob URL and plays it through the page's one
+   `<audio id="player-audio">` element (not Web Audio -- see LEARNINGS.md's
+   background-playback entry), highlighting words each animation frame by
+   comparing `audio.currentTime` against the timings JSON. The next segment
+   starts from the element's `ended` event.
 
 ## Content-hash-keyed cache -- the one invariant to preserve
 

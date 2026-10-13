@@ -290,7 +290,9 @@ URI so no extra network request) and playing it on the page's first
 `pointerdown`/`keydown` (`player.js`'s `unlockAudio()`) -- playing *any* real
 `<audio>` element flips the whole page into the "playback" category for the
 rest of the session, after which the existing `AudioBufferSourceNode` output
-becomes audible with the switch on silent too.
+becomes audible with the switch on silent too. (Since superseded: playback
+itself now goes through an `<audio>` element, see "Background playback"
+below, so the separate unlock element is gone.)
 
 First test of the fix looked like it hadn't worked -- because it hadn't been
 tested yet: the phone was still showing the pre-fix `player.js` from Safari's
@@ -622,3 +624,33 @@ property, don't rely on remembering which one comes later in the file;
 either bump specificity for the one that must win, or verify with a
 computed-style check (position in a CSS file is easy to reorder by accident
 later and silently reintroduce exactly this bug).
+
+## Background playback: Web Audio stops when the page is hidden on iOS
+
+Playback paused whenever you switched tabs/apps or locked an iPhone. The
+player used the Web Audio API (`decodeAudioData` + `AudioBufferSourceNode`),
+and iOS Safari suspends an `AudioContext` as soon as its page is hidden. Only
+media elements keep playing in the background, and only they get lock-screen
+/ Control Center controls (Media Session API). So all playback now goes
+through one `<audio id="player-audio">` element: each segment's WAV becomes
+a blob URL set as its `src`, and the element's `ended` event starts the next
+segment.
+
+Things that matter for keeping it alive in the background:
+- **One element, reused.** iOS only lets a media element `play()` without a
+  user gesture once that element has played from one. Every play path reaches
+  `audioEl.play()` synchronously from its click/keydown (the code before
+  `playSegment`'s first `await`), and afterwards the same element can be
+  started from `ended` handlers, fetch callbacks and lock-screen controls.
+  This also replaces the old silent-switch workaround (the
+  `#ios-audio-unlock` element): a page playing a real `<audio>` element is in
+  the "playback" category anyway.
+- **Never let it sit idle mid-article.** If the next sentence is still being
+  generated, `holdAudioSession()` loops the tiny silent WAV until it arrives;
+  a paused element in a hidden page is how iOS decides playback is over.
+  Prefetch also goes further ahead while the page is hidden
+  (`HIDDEN_LOOKAHEAD`), so those gaps are rare.
+- **Highlighting polls, it doesn't schedule.** Word highlighting reads
+  `audio.currentTime` every animation frame instead of using a `setTimeout`
+  chain. No frames run while hidden, so it pauses and then picks up at the
+  right word when you come back, and seeks need no rescheduling.
