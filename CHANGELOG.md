@@ -11,6 +11,7 @@ use the section as the GitHub release notes.
 ## [Unreleased]
 
 ### Added
+- Lector is now MIT licensed (see `LICENSE`).
 - The library page's "open on your phone" line and ⋯ menu, and `start.sh`'s
   output, now also show the Mac's Bonjour URL (`http://<name>.local:5001`),
   which keeps working when the LAN IP changes. The README now explains that

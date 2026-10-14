@@ -218,3 +218,10 @@ fetching.
 ```bash
 uv run pytest tests/         # segmentation unit tests
 ```
+
+## License
+
+[MIT](LICENSE). Dependencies keep their own licenses -- notably
+[marker-pdf](https://github.com/datalab-to/marker) (GPL-3.0 code, with
+separate terms for its model weights), which is installed from PyPI, not
+bundled here.

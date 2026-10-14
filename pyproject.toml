@@ -2,6 +2,8 @@
 name = "lector"
 version = "1.2.2"
 description = "Locally-hosted read-aloud markdown/PDF article library powered by Kokoro TTS (MLX)"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "python-fasthtml>=0.13.4",
