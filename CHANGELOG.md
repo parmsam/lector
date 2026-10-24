@@ -35,6 +35,11 @@ use the section as the GitHub release notes.
   [parmsam/lector](https://github.com/parmsam/lector) (old links redirect),
   and the Python package name matches.
 
+### Fixed
+- Italic text spanning several sentences (`*One. Two.*`) now shows as
+  italic instead of plain text with stray asterisks, including web-clipped
+  articles whose closing `*` sits on its own line after a line break.
+
 ## [1.2.2] - 2026-10-12
 
 ### Changed

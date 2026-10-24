@@ -13,21 +13,31 @@ def test_emphasis_within_one_sentence_renders_with_real_formatting():
     assert "<strong>bold</strong>" in html
 
 
-def test_emphasis_spanning_two_sentences_falls_back_to_plain_text():
-    # Real bug found via a user's actual document: a single *…* run wrapping
-    # TWO full sentences gets split in half by sentence-boundary splitting,
-    # leaving each half with only one of the two "*" delimiters. Rendering
-    # each half as standalone inline markdown would print a literal, stray
-    # "*" character (markdown-it can't pair an unmatched delimiter) -- worse
-    # than the old plain-text-everywhere behavior. Must fall back to escaped
-    # plain text for a sentence like this instead.
+def test_italic_spanning_two_sentences_is_italic_in_each():
+    # A single *...* run wrapping TWO full sentences gets split in half by
+    # sentence-boundary splitting, leaving each half with one "*". Each half
+    # used to fall back to plain text; segmentation.py now closes the run at
+    # the end of the first sentence and reopens it on the second.
     html, _ = render_document(
         "*A prose pass through the outline. That file stays the source, not synced.*"
     )
     assert "*" not in html
-    assert "<em>" not in html
-    assert "A prose pass through the outline." in html
-    assert "That file stays the source, not synced." in html
+    assert "<em>A prose pass through the outline.</em>" in html
+    assert "<em>That file stays the source, not synced.</em>" in html
+
+
+def test_clipped_italic_with_closer_on_its_own_line():
+    # Web-clipper output: the closing "*" after a hard line break.
+    html, doc = render_document("*First sentence here. Second one, [linked](https://x.y).  \n*")
+    assert "*" not in html
+    assert "<em>First sentence here.</em>" in html
+    assert '<em>Second one, <a href="https://x.y">linked</a>.</em>' in html
+    assert [s.text for s in doc.segments] == ["First sentence here.", "Second one, linked."]
+
+
+def test_lone_asterisk_and_underscore_are_not_balanced():
+    html, _ = render_document("Compute 3 * 4. Then my_var is set.")
+    assert "Compute 3 * 4." in html and "<em>" not in html
 
 
 def test_highlight_within_one_sentence_renders_as_mark():

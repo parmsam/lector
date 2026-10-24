@@ -211,12 +211,22 @@ def _balance_emphasis(raw_sentences: list[str]) -> list[str]:
     so neither renders as bold (render.py falls back to plain text for an
     unbalanced sentence rather than show a stray `**`). Close any run still
     open at the end of a sentence and reopen it at the start of the next, so
-    every sentence is self-contained markdown and keeps its formatting."""
+    every sentence is self-contained markdown and keeps its formatting.
+
+    A single `*`/`_` (italic) run is carried the same way, but only when it
+    opens at the very start of a sentence: a lone `*` or `_` elsewhere is too
+    often not emphasis at all ("3 * 4", "snake_case") to close and reopen."""
     out = []
     carried: list[str] = []  # delimiters opened in an earlier sentence, still open
     for sentence in raw_sentences:
+        starts_italic = [
+            d for d in "*_"
+            if d in carried or (sentence.startswith(d) and not sentence.startswith(d * 2))
+        ]
         sentence = "".join(carried) + sentence
         still_open = [d for d in _PAIRED_DELIMS if sentence.count(d) % 2]
+        singles = re.sub(r"\*\*|__", "", sentence)
+        still_open += [d for d in starts_italic if singles.count(d) % 2]
         out.append(sentence + "".join(reversed(still_open)))
         carried = still_open
     return out
@@ -298,6 +308,18 @@ def split_table_cells(row: str) -> list[str]:
     return [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", row)]
 
 
+# A block wrapped in one emphasis run whose closing delimiter sits after
+# whitespace -- web clippers emit "*Whole paragraph.  \n*", the closer on its
+# own line after a hard break. CommonMark only lets a delimiter close when
+# it directly follows text, so the asterisks showed literally. The opener
+# must be followed by text, so a "* " list marker never matches.
+_LOOSE_EMPHASIS_CLOSER_RE = re.compile(r"^(\*{1,2}|_{1,2})(?=[^\s*_])(.*\S)\s+\1$", re.DOTALL)
+
+
+def _tighten_emphasis_closer(block: str) -> str:
+    return _LOOSE_EMPHASIS_CLOSER_RE.sub(r"\1\2\1", block)
+
+
 def _split_prose_and_list(block: str) -> list[str]:
     """A list can immediately follow other content with no blank line
     separating them -- e.g. a bold "label" line directly above its bullets,
@@ -358,6 +380,7 @@ def segment_document(markdown: str) -> SegmentedDocument:
 
         for structural in _split_headings_and_tables(outer_trimmed):
             for trimmed in _split_prose_and_list(structural):
+                trimmed = _tighten_emphasis_closer(trimmed)
                 doc.blocks.append(trimmed)
                 _segment_one_block(trimmed, block_index, doc)
                 block_index += 1
