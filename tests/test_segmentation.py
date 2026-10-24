@@ -259,3 +259,29 @@ def test_empty_page_anchor_spans_are_removed():
 def test_html_blocks_other_than_empty_anchors_are_untouched():
     doc = segment_document("<details><summary>Answer</summary>\nHidden.\n</details>\n\nAfter.")
     assert [s.text for s in doc.segments] == ["After."]
+
+
+def test_wikilinks_are_read_as_their_labels():
+    doc = segment_document("Read [[snake_case_note]], [[Target|alias]], [[Note#Part]] and [[Note#^abc123]]. ![[img.png]]")
+    assert doc.segments[0].text == "Read snake case note, alias, Note, Part and Note."
+
+
+def test_obsidian_comments_are_not_read_but_code_keeps_percent_signs():
+    doc = segment_document(
+        "Visible %%inline note%% text.\n\n%%\nhidden block\n\nstill hidden\n%%\n\n"
+        "Run `%%time` first.\n\n```\n%%time\nx = 1 %% 2\n```"
+    )
+    texts = [s.text for s in doc.segments]
+    assert texts[:2] == ["Visible  text.", "Run %%time first."]
+    assert "%%time\nx = 1 %% 2" in doc.blocks[-1]
+
+
+def test_callout_title_is_its_own_segment():
+    doc = segment_document("> [!note] Heads up\n> First. Second.")
+    assert [s.text for s in doc.segments] == ["Heads up", "First.", "Second."]
+    assert all(s.type == "blockquote" for s in doc.segments)
+
+
+def test_untitled_callout_is_titled_by_its_type():
+    doc = segment_document("> [!tip]\n> Body.")
+    assert [s.text for s in doc.segments] == ["Tip", "Body."]

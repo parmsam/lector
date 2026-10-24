@@ -12,6 +12,12 @@ use the section as the GitHub release notes.
 
 ### Added
 - Lector is now MIT licensed (see `LICENSE`).
+- Obsidian markdown: `~~strikethrough~~` now displays as struck-through
+  text; `[[wikilinks]]` show and are read as their label (the alias after
+  `|`, or `Note > Heading` for a heading link) and `![[embeds]]` are
+  dropped; `> [!note] Title` callouts render as colored callout boxes with
+  their title read first; and `%%comments%%` are hidden and not read aloud
+  (code blocks keep their `%%`).
 - The library page's "open on your phone" line and ⋯ menu, and `start.sh`'s
   output, now also show the Mac's Bonjour URL (`http://<name>.local:5001`),
   which keeps working when the LAN IP changes. The README now explains that

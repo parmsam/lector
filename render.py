@@ -27,7 +27,16 @@ from itertools import groupby
 from markdown_it import MarkdownIt
 from markdown_it.rules_inline.state_inline import Delimiter, StateInline
 
-from segmentation import Segment, SegmentedDocument, segment_document, split_table_cells
+from segmentation import (
+    WIKILINK_RE,
+    Segment,
+    SegmentedDocument,
+    callout_header,
+    segment_document,
+    split_table_cells,
+    strip_markdown,
+    wikilink_label,
+)
 
 # html_block/html_inline disabled: this app has no authentication (see
 # CLAUDE.md/README.md), so any device on the LAN can add content, and PDF/
@@ -37,14 +46,18 @@ from segmentation import Segment, SegmentedDocument, segment_document, split_tab
 # viewing the article). Disabling these two rules makes markdown-it-py
 # escape raw HTML as literal text instead, while leaving normal markdown
 # (bold/links/code/etc) fully intact.
-_md = MarkdownIt("commonmark").disable("html_block").disable("html_inline")
+_md = (
+    MarkdownIt("commonmark")
+    .disable("html_block")
+    .disable("html_inline")
+    .enable("strikethrough")  # GFM/Obsidian ~~text~~; shipped but off in "commonmark"
+)
 
 
 def _mark_tokenize(state: StateInline, silent: bool) -> bool:
     """Parse Obsidian-style ==highlighted text== into a <mark> span.
 
-    markdown-it-py's "commonmark" preset ships a `strikethrough` rule for
-    ~~text~~ but doesn't enable it; this is that same rule (doubled-delimiter,
+    This is markdown-it-py's `strikethrough` rule for ~~text~~ (doubled-delimiter,
     balance_pairs-based, so bold/italic can nest inside) ported from '~' to
     '=' and 's'/<s> to 'mark'/<mark>, since there's no "mark" plugin in
     markdown-it-py or mdit_py_plugins to reuse.
@@ -131,6 +144,29 @@ def _mark_postprocess(state: StateInline) -> None:
 _md.inline.ruler.before("emphasis", "mark", _mark_tokenize)
 _md.inline.ruler2.before("emphasis", "mark", _mark_postprocess)
 
+
+def _wikilink_tokenize(state: StateInline, silent: bool) -> bool:
+    """Obsidian [[Note]] / [[Note|alias]] -> its label in a styled span (not
+    a link: there's no vault to point it at); ![[embed]] -> nothing. Runs
+    before the "link"/"image" rules, which would otherwise see "[[" as an
+    unmatched bracket and print it literally."""
+    m = WIKILINK_RE.match(state.src, state.pos)
+    if not m:
+        return False
+    if not silent and not m.group(1):
+        token = state.push("wikilink", "", 0)
+        token.content = strip_markdown(wikilink_label(m.group(2)))
+    state.pos = m.end()
+    return True
+
+
+_md.inline.ruler.before("link", "wikilink", _wikilink_tokenize)
+_md.add_render_rule(
+    "wikilink",
+    lambda self, tokens, idx, options, env: f'<span class="wikilink">{html.escape(tokens[idx].content)}</span>',
+)
+
+
 def _renders_safely_as_inline_markdown(raw_sentence: str) -> bool:
     """A sentence is one half of a sentence-boundary split over the *raw* block
     text (see segmentation.py). If an emphasis/code span happens to straddle
@@ -142,7 +178,10 @@ def _renders_safely_as_inline_markdown(raw_sentence: str) -> bool:
     reconstruct cross-sentence spans, treat an odd count of any delimiter
     character as a sign this sentence isn't self-contained markdown and fall
     back to safe plain text for just that sentence."""
-    for delim in ("**", "__", "=="):
+    # A wikilink's contents are rendered as a plain label, never as markdown,
+    # so an underscore in a note name doesn't count toward the balance.
+    raw_sentence = WIKILINK_RE.sub("", raw_sentence)
+    for delim in ("**", "__", "==", "~~"):
         if raw_sentence.count(delim) % 2 != 0:
             return False
     # Count single '*'/'_' not already accounted for by the doubled forms above
@@ -278,12 +317,20 @@ def _render_list(segs: list[Segment]) -> str:
     return "".join(out)
 
 
-def _render_blockquote(segs: list[Segment]) -> str:
+def _render_blockquote(segs: list[Segment], raw_block: str) -> str:
     spans = [
         f'<span data-seg="{seg.index}" data-type="blockquote">{_render_inline_or_plain(seg)}</span>'
         for seg in segs
     ]
-    return "<blockquote>" + " ".join(spans) + "</blockquote>"
+    callout = callout_header(re.sub(r"^>\s?", "", raw_block, flags=re.MULTILINE))
+    if not callout:
+        return "<blockquote>" + " ".join(spans) + "</blockquote>"
+    # segmentation.py always emits a callout's title as its first segment.
+    body = f'<div class="callout-body">{" ".join(spans[1:])}</div>' if spans[1:] else ""
+    return (
+        f'<div class="callout" data-callout="{_attr(callout[0])}">'
+        f'<div class="callout-title">{spans[0]}</div>{body}</div>'
+    )
 
 
 def _render_paragraph(segs: list[Segment]) -> str:
@@ -320,7 +367,7 @@ def render_document(markdown: str) -> tuple[str, SegmentedDocument]:
         elif seg_type == "listitem":
             blocks_html.append(_render_list(segs))
         elif seg_type == "blockquote":
-            blocks_html.append(_render_blockquote(segs))
+            blocks_html.append(_render_blockquote(segs, raw_block))
         elif seg_type == "paragraph":
             blocks_html.append(_render_paragraph(segs))
     return "\n".join(blocks_html), doc

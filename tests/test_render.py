@@ -125,3 +125,29 @@ def test_bold_wrapped_punctuation_renders_without_literal_asterisks():
     html, _ = render_document("The distinction collapses**.** He suggested more.")
     assert "**" not in html
     assert "The distinction collapses." in html
+
+
+def test_strikethrough_renders():
+    html, _ = render_document("This is ~~gone~~ text.")
+    assert "<s>gone</s>" in html
+
+
+def test_wikilinks_render_as_labels_and_embeds_are_dropped():
+    html, _ = render_document("See [[My Note]], [[my_note|the alias]] and [[Note#Part]]. ![[pic.png]]")
+    assert '<span class="wikilink">My Note</span>' in html
+    assert '<span class="wikilink">the alias</span>' in html
+    assert '<span class="wikilink">Note &gt; Part</span>' in html
+    assert "[[" not in html and "pic.png" not in html
+
+
+def test_callout_renders_title_and_body():
+    html, doc = render_document("> [!warning]- Be **careful**\n> Body one. Body two.")
+    assert '<div class="callout" data-callout="warning">' in html
+    assert re.search(r'<div class="callout-title"><span data-seg="0"[^>]*>Be <strong>careful</strong></span></div>', html)
+    assert 'data-seg="2"' in html.split('<div class="callout-body">')[1]
+    assert "[!warning]" not in html
+
+
+def test_plain_blockquote_is_not_a_callout():
+    html, _ = render_document("> just a quote")
+    assert html.startswith("<blockquote>")

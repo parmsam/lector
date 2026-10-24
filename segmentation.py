@@ -53,6 +53,9 @@ def strip_markdown(text: str) -> str:
     # signature/blank lines) before the emphasis regexes below, so escaped runs of
     # punctuation don't survive as literal backslashes in the narrated text.
     text = re.sub(r"\\([\\`*_{}\[\]()#+\-.!>~])", r"\1", text)
+    # Obsidian wikilinks/embeds first, so the emphasis regexes below never see
+    # a note name's underscores (spoken labels turn them into spaces).
+    text = WIKILINK_RE.sub(lambda m: "" if m.group(1) else wikilink_label(m.group(2), spoken=True), text)
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     text = re.sub(r"\*(.+?)\*", r"\1", text)
     text = re.sub(r"__(.+?)__", r"\1", text)
@@ -88,6 +91,60 @@ _EMPTY_ANCHOR_RE = re.compile(r"<(span|a)\b[^<>]*>\s*</\1>", re.IGNORECASE)
 
 def strip_empty_anchors(markdown: str) -> str:
     return _EMPTY_ANCHOR_RE.sub("", markdown)
+
+
+# Obsidian [[wikilinks]] and ![[embeds]]. Lector has no vault to resolve
+# them against, so a link shows (and is read) as its label, and an embed --
+# usually an image or another note -- is dropped.
+WIKILINK_RE = re.compile(r"(!?)\[\[([^\[\]\n]+)\]\]")
+
+
+def wikilink_label(inner: str, spoken: bool = False) -> str:
+    """What Obsidian shows for [[inner]]: the alias after "|" if there is one,
+    else the note name, with a heading target as "Note > Heading" (read as
+    "Note, Heading"). A block reference ("#^abc123") is just its note name."""
+    target, _, alias = inner.partition("|")
+    if alias.strip():
+        return alias.strip()
+    note, _, sub = target.partition("#")
+    note, sub = note.strip(), sub.strip()
+    if sub.startswith("^"):
+        sub = ""
+    if note and sub:
+        label = f"{note}, {sub}" if spoken else f"{note} > {sub}"
+    else:
+        label = note or sub
+    return label.replace("_", " ") if spoken else label
+
+
+# Obsidian %%comments%% (inline or spanning several lines/blocks) are hidden
+# in Obsidian's reading view, so they're neither shown nor read here. Code
+# (fenced or inline) is matched first and kept as-is: "%%" is real syntax in
+# Jupyter cell magics and Mermaid comments.
+_COMMENT_OR_CODE_RE = re.compile(r"(^```.*?^```[^\n]*$|`[^`\n]+`)|%%.*?%%", re.DOTALL | re.MULTILINE)
+
+
+def strip_obsidian_comments(markdown: str) -> str:
+    return _COMMENT_OR_CODE_RE.sub(lambda m: m.group(1) or "", markdown)
+
+
+# Obsidian callout header, the first line of a blockquote: "[!note] Title",
+# "[!tip]- Folded", or just "[!warning]" (titled by its type).
+_CALLOUT_RE = re.compile(r"^\[!([A-Za-z][\w-]*)\][+-]?[ \t]*(.*)$")
+
+
+def callout_header(quote_text: str) -> tuple[str, str] | None:
+    """(type, raw title) if a blockquote (its "> " prefixes already removed)
+    is an Obsidian callout, else None. The title falls back to the type
+    ("Note") when absent or unspeakable, so a callout always has a title
+    segment -- render.py relies on that to tell it apart from the body."""
+    m = _CALLOUT_RE.match(quote_text.split("\n", 1)[0])
+    if not m:
+        return None
+    kind, title = m.group(1).lower(), m.group(2).strip()
+    if not has_speakable_content(strip_markdown(title)):
+        title = kind.capitalize()
+    return kind, title
 
 
 def has_speakable_content(text: str) -> bool:
@@ -290,6 +347,7 @@ def segment_document(markdown: str) -> SegmentedDocument:
     # correctly on next view too, with no migration needed.
     markdown = markdown.replace("\r\n", "\n").replace("\r", "\n")
     markdown = strip_empty_anchors(markdown)
+    markdown = strip_obsidian_comments(markdown)
     raw_blocks = re.split(r"\n{2,}", markdown)
     block_index = 0
 
@@ -361,6 +419,15 @@ def _segment_one_block(trimmed: str, block_index: int, doc: SegmentedDocument) -
         # of them here first (MULTILINE), then strip_markdown only has
         # inline formatting left to handle.
         raw_no_prefix = re.sub(r"^>\s?", "", trimmed, flags=re.MULTILINE)
+        if (callout := callout_header(raw_no_prefix)):
+            # The title is its own segment, ahead of the body's sentences.
+            title = callout[1]
+            idx = len(doc.segments)
+            doc.segments.append(Segment(
+                index=idx, text=strip_markdown(title), raw_text=title,
+                type="blockquote", level=None, block_index=block_index,
+            ))
+            raw_no_prefix = raw_no_prefix.partition("\n")[2]
         plain_whole = strip_markdown(raw_no_prefix)
         for plain_sentence, raw_sentence in _sentence_pairs(raw_no_prefix, plain_whole):
             plain_sentence = plain_sentence.strip()

@@ -398,6 +398,28 @@ a.reader-source:hover { color: var(--accent); }
 .doc-body th, .doc-body td { border: 1px solid var(--border); padding: 0.4rem 0.7rem; vertical-align: top; text-align: left; }
 .doc-body th { background: var(--surface); }
 .doc-body mark { background: var(--mark-bg); color: var(--fg); border-radius: 3px; padding: 0 0.15em; }
+/* Obsidian [[wikilinks]]: a label only (there's no vault to link into). */
+.doc-body .wikilink { color: var(--accent); }
+
+/* Obsidian callouts. Colors follow Obsidian's type groups; the tint is
+   mixed into --bg so it reads in both themes. */
+.doc-body .callout {
+  --callout-color: #448aff;
+  border-left: 3px solid var(--callout-color);
+  background: color-mix(in srgb, var(--callout-color) 10%, var(--bg));
+  border-radius: 6px; padding: 0.6rem 1rem; margin: 1rem 0;
+}
+.doc-body .callout-title { font-weight: 600; color: var(--callout-color); }
+.doc-body .callout-body { margin-top: 0.35rem; }
+.doc-body .callout:is([data-callout="abstract"], [data-callout="summary"], [data-callout="tldr"]) { --callout-color: #00b0ff; }
+.doc-body .callout:is([data-callout="info"], [data-callout="todo"]) { --callout-color: #00b8d4; }
+.doc-body .callout:is([data-callout="tip"], [data-callout="hint"], [data-callout="important"]) { --callout-color: #00bfa5; }
+.doc-body .callout:is([data-callout="success"], [data-callout="check"], [data-callout="done"]) { --callout-color: #00c853; }
+.doc-body .callout:is([data-callout="question"], [data-callout="help"], [data-callout="faq"]) { --callout-color: #ec9a24; }
+.doc-body .callout:is([data-callout="warning"], [data-callout="caution"], [data-callout="attention"]) { --callout-color: #ff9100; }
+.doc-body .callout:is([data-callout="failure"], [data-callout="fail"], [data-callout="missing"], [data-callout="danger"], [data-callout="error"], [data-callout="bug"]) { --callout-color: #ff5252; }
+.doc-body .callout[data-callout="example"] { --callout-color: #7c4dff; }
+.doc-body .callout:is([data-callout="quote"], [data-callout="cite"]) { --callout-color: #9e9e9e; }
 
 [data-seg] { border-radius: 3px; cursor: pointer; }
 [data-seg].sentence-active { background: var(--highlight-sentence); }
