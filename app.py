@@ -362,6 +362,22 @@ async def post_articles_upload_folder(request: Request):
     return RedirectResponse(f"/?notice={quote(notice)}", status_code=303)
 
 
+def _delete_article_and_files(article_id: int) -> bool:
+    """Delete an article plus everything stored for it outside the row (its
+    cached audio and kept original PDF). False if it was already gone."""
+    article = db.delete_article(DB, article_id)
+    if article is None:
+        return False
+    cache.delete_article_cache(article.content_hash, DB)
+    if article.pdf_path:
+        Path(article.pdf_path).unlink(missing_ok=True)
+    return True
+
+
+def _within(folder: str | None, path: str) -> bool:
+    return bool(folder) and (folder == path or folder.startswith(path + "/"))
+
+
 @app.post("/article/{article_id}/move")
 def post_article_move(article_id: int, folder: str = ""):
     article = db.get_article(DB, article_id)
@@ -386,14 +402,54 @@ def post_folder_delete(path: str = ""):
     # container with its own storage to clean up.
     articles = db.get_articles_in_folder(DB, path)
     for article in articles:
-        deleted = db.delete_article(DB, article.id)
-        if deleted is not None:
-            cache.delete_article_cache(deleted.content_hash, DB)
-            if deleted.pdf_path:
-                Path(deleted.pdf_path).unlink(missing_ok=True)
+        _delete_article_and_files(article.id)
     db.clear_folder_sort_overrides(DB, path)
     count = len(articles)
     notice = f"Deleted folder \"{path}\" and {count} article{'s' if count != 1 else ''}."
+    return RedirectResponse(f"/?notice={quote(notice)}", status_code=303)
+
+
+@app.post("/library/bulk")
+async def post_library_bulk(request: Request):
+    # The library page's multi-select bar (static/library.js): one action
+    # applied to any mix of articles and folders. A selected folder covers
+    # everything inside it, so a selected article that's already inside a
+    # selected folder is left to the folder rather than handled twice --
+    # moving it on its own would pull it out of the folder's subtree.
+    form = await request.form()
+    action = form.get("action") or ""
+    folders = sorted({p for p in (db.normalize_folder(f) for f in form.getlist("folder")) if p})
+    # Drop folders nested inside another selected folder (same reasoning).
+    folders = [p for p in folders if not any(p != q and _within(p, q) for q in folders)]
+    ids = {int(i) for i in form.getlist("article_id") if str(i).isdigit()}
+    articles = [a for a in (db.get_article(DB, i) for i in ids) if a is not None]
+    articles = [a for a in articles if not any(_within(a.folder, p) for p in folders)]
+
+    if action == "delete":
+        count = sum(_delete_article_and_files(a.id) for a in articles)
+        for path in folders:
+            for article in db.get_articles_in_folder(DB, path):
+                count += _delete_article_and_files(article.id)
+            db.clear_folder_sort_overrides(DB, path)
+        notice = f"Deleted {count} article{'s' if count != 1 else ''}."
+    elif action == "move":
+        target = db.normalize_folder(form.get("target") or "")
+        for a in articles:
+            db.set_article_folder(DB, a.id, target)
+        skipped = 0
+        for path in folders:
+            name = path.rsplit("/", 1)[-1]
+            new_path = f"{target}/{name}" if target else name
+            if target and _within(target, path):
+                skipped += 1  # can't move a folder into itself
+                continue
+            db.rename_folder(DB, path, new_path)
+        moved = len(articles) + len(folders) - skipped
+        notice = f"Moved {moved} item{'s' if moved != 1 else ''} to {target or 'no folder'}."
+        if skipped:
+            notice += f" ({skipped} folder{'s' if skipped != 1 else ''} skipped: can't move a folder into itself.)"
+    else:
+        return Response("Unknown action", status_code=400)
     return RedirectResponse(f"/?notice={quote(notice)}", status_code=303)
 
 
@@ -441,11 +497,7 @@ def post_article_edit(article_id: int, title: str = "", markdown: str = ""):
 
 @app.delete("/article/{article_id}")
 def delete_article(article_id: int):
-    article = db.delete_article(DB, article_id)
-    if article is not None:
-        cache.delete_article_cache(article.content_hash, DB)
-        if article.pdf_path:
-            Path(article.pdf_path).unlink(missing_ok=True)
+    _delete_article_and_files(article_id)
     return Response(status_code=200)
 
 

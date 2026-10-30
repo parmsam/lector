@@ -307,6 +307,10 @@ def _render_folder_node(name: str, node: dict, all_folders: list[str], inherited
     menu_id = f"folder-menu-{_html_id(node['path'])}"
     return Details(
         Summary(
+            Input(
+                type="checkbox", cls="select-box", data_select_folder=node["path"], data_folder_count=str(total),
+                aria_label=f"Select folder {name}",
+            ),
             Span("", cls="folder-chevron", aria_hidden="true"),
             Span(name, cls="folder-name"),
             Span(str(total), cls="folder-count", title=f"{total} article{'s' if total != 1 else ''}"),
@@ -339,6 +343,23 @@ def _render_folder_node(name: str, node: dict, all_folders: list[str], inherited
         # browser last had open (and opens matching ones while searching).
         cls="folder-group",
         data_folder_path=node["path"],
+    )
+
+
+def _selection_bar(all_folders: list[str]) -> Div:
+    """Bottom bar shown while the library is in selection mode (toggled by
+    the toolbar's "Select" button, see static/library.js), acting on every
+    checked article and folder at once via /library/bulk."""
+    options = [Option("Move to…", value="", selected=True, disabled=True), Option("— No folder —", value="__root__")]
+    options += [Option(f, value=f) for f in all_folders]
+    options.append(Option("+ New folder…", value="__new__"))
+    return Div(
+        Span("0 selected", id="selection-count", cls="selection-count", aria_live="polite"),
+        Button("Select all", type="button", id="select-all", cls="link-btn"),
+        Select(*options, id="bulk-move", aria_label="Move selected to folder", disabled=True),
+        Button("Delete", type="button", id="bulk-delete", cls="btn btn-danger", disabled=True),
+        Button("Done", type="button", id="select-done", cls="btn"),
+        id="selection-bar", cls="selection-bar", hidden=True,
     )
 
 
@@ -431,6 +452,7 @@ def library_page(
                 aria_label="Search library", autocomplete="off",
             ),
             _sort_form(sort),
+            Button("Select", type="button", id="select-toggle", cls="btn select-toggle", aria_pressed="false"),
             cls="library-toolbar",
         )
         if articles else ""
@@ -443,6 +465,7 @@ def library_page(
             Main(
                 H1("Library", cls="visually-hidden"),
                 update_banner, notice_banner, toolbar, _lan_line(lan_url, mdns_url), body,
+                _selection_bar(sorted({a.folder for a in articles if a.folder})) if articles else "",
                 Div(
                     Div("Drop files to add them", cls="drop-overlay-title"),
                     Div("", cls="drop-overlay-target"),
@@ -577,6 +600,10 @@ def _article_row(a, all_folders: list[str] | None = None, stats: dict | None = N
     )
     search_text = " ".join(filter(None, [a.title or "", domain, a.folder or "", a.original_filename or ""])).lower()
     return Div(
+        Input(
+            type="checkbox", cls="select-box", data_select_article=str(a.id), data_folder=a.folder or "",
+            aria_label=f"Select {a.title or 'Untitled'}",
+        ),
         A(
             Span(a.title or "Untitled", cls="article-title"),
             Span(" · ".join(m for m in meta if m), cls="article-meta", title=a.folder or None),

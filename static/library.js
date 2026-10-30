@@ -308,6 +308,176 @@
     });
   }
 
+  // ---- multi-select: move or delete many articles/folders at once ----
+  // The toolbar's "Select" button puts the page in selection mode
+  // (body.selecting shows the checkboxes and the bottom bar, see
+  // components.py's _selection_bar). What's selected lives in two sets
+  // here; the checkboxes are redrawn from them. A selected folder covers
+  // everything inside it -- those rows show checked but disabled, and
+  // aren't sent separately (app.py's /library/bulk drops them too).
+  const selectToggle = document.getElementById("select-toggle");
+  const bar = document.getElementById("selection-bar");
+  if (selectToggle && bar) {
+    const selArticles = new Set();
+    const selFolders = new Set();
+    const countEl = document.getElementById("selection-count");
+    const moveSelect = document.getElementById("bulk-move");
+    const deleteBtn = document.getElementById("bulk-delete");
+
+    const within = (folder, path) => !!folder && (folder === path || folder.startsWith(path + "/"));
+    const coveredFolder = (path) => [...selFolders].some((p) => p !== path && within(path, p));
+    const coveredArticle = (folder) => [...selFolders].some((p) => within(folder, p));
+    const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+    // What would actually be acted on: selections not covered by a folder.
+    const effective = () => ({
+      folders: [...selFolders].filter((p) => !coveredFolder(p)),
+      articles: [...selArticles].filter((id) => {
+        const box = document.querySelector(`[data-select-article="${id}"]`);
+        return box && !coveredArticle(box.dataset.folder);
+      }),
+    });
+
+    const render = () => {
+      document.querySelectorAll("[data-select-folder]").forEach((box) => {
+        const path = box.dataset.selectFolder;
+        const covered = coveredFolder(path);
+        box.checked = covered || selFolders.has(path);
+        box.disabled = covered;
+        box.closest(".folder-group").classList.toggle("selected", box.checked);
+      });
+      document.querySelectorAll("[data-select-article]").forEach((box) => {
+        const covered = coveredArticle(box.dataset.folder);
+        box.checked = covered || selArticles.has(box.dataset.selectArticle);
+        box.disabled = covered;
+        box.closest(".article-row").classList.toggle("selected", box.checked);
+      });
+      const { folders, articles } = effective();
+      const parts = [];
+      if (folders.length) parts.push(plural(folders.length, "folder"));
+      if (articles.length || !folders.length) parts.push(plural(articles.length, "article"));
+      countEl.textContent = `${parts.join(", ")} selected`;
+      const none = !folders.length && !articles.length;
+      moveSelect.disabled = none;
+      deleteBtn.disabled = none;
+    };
+
+    const setSelecting = (on) => {
+      document.body.classList.toggle("selecting", on);
+      selectToggle.setAttribute("aria-pressed", String(on));
+      selectToggle.textContent = on ? "Cancel" : "Select";
+      bar.hidden = !on;
+      if (!on) { selArticles.clear(); selFolders.clear(); }
+      render();
+    };
+    selectToggle.addEventListener("click", () => setSelecting(!document.body.classList.contains("selecting")));
+    document.getElementById("select-done").addEventListener("click", () => setSelecting(false));
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && document.body.classList.contains("selecting") && e.target.id !== "library-search") {
+        setSelecting(false);
+      }
+    });
+
+    const toggleFolder = (path, on) => {
+      if (on) {
+        selFolders.add(path);
+        // Anything inside is now covered; forget it so unchecking the
+        // folder later doesn't leave stale picks behind.
+        [...selFolders].forEach((p) => { if (p !== path && within(p, path)) selFolders.delete(p); });
+        document.querySelectorAll("[data-select-article]").forEach((box) => {
+          if (within(box.dataset.folder, path)) selArticles.delete(box.dataset.selectArticle);
+        });
+      } else {
+        selFolders.delete(path);
+      }
+    };
+
+    document.addEventListener("change", (e) => {
+      const box = e.target.closest(".select-box");
+      if (!box) return;
+      if (box.dataset.selectFolder !== undefined) toggleFolder(box.dataset.selectFolder, box.checked);
+      else if (box.checked) selArticles.add(box.dataset.selectArticle);
+      else selArticles.delete(box.dataset.selectArticle);
+      render();
+    });
+    // A checkbox inside a folder's <summary> must not also open/close it.
+    document.addEventListener("click", (e) => {
+      if (e.target.closest("summary .select-box")) e.stopPropagation();
+    });
+    // In selection mode, tapping anywhere on an article row toggles it
+    // instead of opening the article.
+    document.addEventListener("click", (e) => {
+      if (!document.body.classList.contains("selecting")) return;
+      const row = e.target.closest(".article-row");
+      if (!row || e.target.closest(".select-box")) return;
+      e.preventDefault();
+      const box = row.querySelector(".select-box");
+      if (box.disabled) return;
+      box.checked = !box.checked;
+      box.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    // While searching: every matching article. Otherwise: every top-level
+    // folder and unfiled article -- selecting each article individually
+    // would flatten the folder structure on a move.
+    document.getElementById("select-all").addEventListener("click", () => {
+      const continueSection = document.getElementById("continue-section");
+      const searching = !!document.getElementById("library-search")?.value.trim();
+      document.querySelectorAll("#library-body .article-row").forEach((row) => {
+        if (row.hidden || (continueSection && continueSection.contains(row))) return;
+        if (!searching && row.closest(".folder-group")) return;
+        selArticles.add(row.querySelector(".select-box").dataset.selectArticle);
+      });
+      if (!searching) {
+        document.querySelectorAll("#library-body .folder-group").forEach((g) => {
+          if (!g.parentElement.closest(".folder-group")) toggleFolder(g.dataset.folderPath, true);
+        });
+      }
+      render();
+    });
+
+    const submit = async (action, target) => {
+      const { folders, articles } = effective();
+      const form = new FormData();
+      form.append("action", action);
+      folders.forEach((p) => form.append("folder", p));
+      articles.forEach((id) => form.append("article_id", id));
+      if (target !== undefined) form.append("target", target);
+      try {
+        const resp = await fetch("/library/bulk", { method: "POST", body: form });
+        if (!resp.ok) throw new Error(`status ${resp.status}`);
+        window.location = resp.url; // follows the redirect to /?notice=...
+      } catch (err) {
+        console.error(`Bulk ${action} failed:`, err);
+        alert(`Failed to ${action} the selected items.`);
+      }
+    };
+
+    moveSelect.addEventListener("change", () => {
+      let target = moveSelect.value;
+      moveSelect.selectedIndex = 0; // back to the "Move to…" placeholder
+      if (target === "__new__") {
+        const name = window.prompt('New folder name (use "/" for nested, e.g. Notes/Work):');
+        if (!name || !name.trim()) return;
+        target = name.trim();
+      } else if (target === "__root__") {
+        target = "";
+      }
+      submit("move", target);
+    });
+
+    deleteBtn.addEventListener("click", () => {
+      const { folders, articles } = effective();
+      const total = articles.length + folders.reduce((n, p) =>
+        n + Number(document.querySelector(`[data-select-folder="${CSS.escape(p)}"]`)?.dataset.folderCount || 0), 0);
+      const what = folders.length
+        ? `Delete ${plural(folders.length, "folder")} and permanently delete ${plural(total, "article")} in total`
+        : `Permanently delete ${plural(total, "article")}`;
+      if (!confirm(`${what} (including cached audio)? This cannot be undone.`)) return;
+      submit("delete");
+    });
+  }
+
   const sortSelect = document.getElementById("sort-select");
   if (sortSelect) sortSelect.addEventListener("change", () => sortSelect.form.submit());
 

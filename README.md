@@ -42,6 +42,8 @@ the architecture, `LEARNINGS.md` for the design decisions behind it, and
   its library-row ⋯ menu, tag one on the way in from any "Add an article"
   form, upload a whole folder at once (subfolder structure preserved), or
   drag files straight onto the library (or onto a folder)
+- Select many articles and folders at once (**Select** on the library page)
+  to move or delete them together
 - A compact library: "Continue listening" for what you're partway through,
   listening time and progress on every article, and search across all
   folders (press `/`)

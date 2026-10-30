@@ -292,6 +292,33 @@ details.folder-group { border: none; border-radius: 0; padding: 0; margin: 0; }
 .folder-contents { padding-left: 1.4rem; }
 .folder-sort-select { padding: 0.2rem 1.5rem 0.2rem 0.5rem; font-size: 0.75rem; }
 
+/* ---- multi-select (library.js toggles body.selecting) ---- */
+.select-toggle { padding: 0.5rem 0.8rem; font-size: 0.85rem; border: 1px solid var(--border); border-radius: 8px; }
+.select-toggle[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.select-box {
+  display: none; flex-shrink: 0; width: 1.15rem; height: 1.15rem; margin: 0 0.15rem 0 0;
+  accent-color: var(--accent); cursor: pointer;
+}
+body.selecting .select-box { display: block; }
+body.selecting .kebab-btn { display: none; }
+body.selecting .article-row { cursor: pointer; }
+.article-row.selected, .folder-group.selected > summary { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+/* Covered by a checked folder: shown checked, but not separately toggleable. */
+.select-box:disabled { opacity: 0.55; cursor: default; }
+body.selecting .container { padding-bottom: 5rem; }
+.selection-bar {
+  position: fixed; left: 50%; bottom: max(1rem, env(safe-area-inset-bottom)); transform: translateX(-50%);
+  z-index: 40; width: min(40rem, calc(100% - 2rem)); box-sizing: border-box;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; padding: 0.6rem 0.75rem;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.18);
+}
+.selection-bar[hidden] { display: none; }
+.selection-count { font-weight: 600; font-size: 0.9rem; margin-right: auto; white-space: nowrap; }
+.selection-bar select { padding: 0.4rem 1.75rem 0.4rem 0.6rem; font-size: 0.85rem; border-radius: 8px; max-width: 11rem; }
+.selection-bar .btn { padding: 0.4rem 0.8rem; font-size: 0.85rem; }
+.selection-bar :disabled { opacity: 0.5; cursor: default; }
+
 #drop-overlay {
   position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; gap: 0.4rem;
   align-items: center; justify-content: center; pointer-events: none;

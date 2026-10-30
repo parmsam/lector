@@ -11,6 +11,12 @@ use the section as the GitHub release notes.
 ## [Unreleased]
 
 ### Added
+- Select several articles and folders on the library page at once: tap
+  **Select**, check rows (or tap them), then move everything to a folder
+  or delete it from the bar at the bottom. Checking a folder includes
+  everything inside it, and a moved folder keeps its subfolders.
+  **Select all** picks every top-level item, or every match while
+  searching.
 - Quarto `.qmd` files can be uploaded (single file, folder import or
   drag-and-drop). They're read like the rendered page, not the source:
   the YAML front matter is dropped and its `title:` becomes the heading,
