@@ -11,6 +11,8 @@ use the section as the GitHub release notes.
 ## [Unreleased]
 
 ### Added
+- `Start Lector.command` and `Stop Lector.command`: double-click in
+  Finder to start or stop the server without opening a terminal yourself.
 - Lector is now MIT licensed (see `LICENSE`).
 - Obsidian markdown: `~~strikethrough~~` now displays as struck-through
   text; `[[wikilinks]]` show and are read as their label (the alias after

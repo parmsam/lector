@@ -93,6 +93,12 @@ any already-running instance first (so it's also how you restart after
 pulling changes). It tracks the process in `data/server.pid` so `stop.sh` can
 find it from a different terminal.
 
+Prefer Finder? Double-click **`Start Lector.command`** to open a Terminal
+window running the server (close the window or Ctrl+C to stop it), and
+**`Stop Lector.command`** to stop it. They just run `start.sh` / `stop.sh`.
+The first time, macOS may block them as downloaded files: right-click ->
+**Open** once to allow it.
+
 The server binds to `0.0.0.0` on port 5001 (override with the
 `PORT` environment variable). Open `http://localhost:5001` on the same
 machine, or find your machine's LAN IP (e.g. `ipconfig getifaddr en0` on
