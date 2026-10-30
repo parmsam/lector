@@ -10,6 +10,8 @@ use the section as the GitHub release notes.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-30
+
 ### Added
 - Select several articles and folders on the library page at once: tap
   **Select**, check rows (or tap them), then move everything to a folder
@@ -154,7 +156,8 @@ First tagged release of the rewrite as a network-accessible web app.
 - Mobile support: Add to Home Screen, Android/iOS share target for adding
   links, light/dark theme.
 
-[Unreleased]: https://github.com/parmsam/lector/compare/v1.2.2...HEAD
+[Unreleased]: https://github.com/parmsam/lector/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/parmsam/lector/compare/v1.2.2...v1.3.0
 [1.2.2]: https://github.com/parmsam/lector/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/parmsam/lector/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/parmsam/lector/compare/v1.1.0...v1.2.0
