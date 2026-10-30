@@ -50,6 +50,9 @@ pdf_ingest.py     marker-pdf wrapper. Lazily imports marker.* inside the
                    function body -- importing this module must never cost
                    marker's (heavy, occasionally fragile) import chain unless a
                    PDF is actually being converted.
+qmd_ingest.py     Quarto .qmd -> plain markdown at upload time (front matter,
+                   chunk options, divs/callouts, attributes, shortcodes,
+                   cross-refs). Pure string functions; nothing is executed.
 components.py     FT (FastHTML component) builders for every page. No routing,
                    no business logic -- pure view functions taking plain data.
 static/player.js  The entire client-side player. No build step, no framework --

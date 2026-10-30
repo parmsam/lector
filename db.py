@@ -51,7 +51,7 @@ def get_db(path: str | Path = DB_PATH) -> Database:
             "title": str,
             "markdown": str,
             "content_hash": str,
-            "source_type": str,           # "paste" | "markdown_file" | "pdf" | "url"
+            "source_type": str,           # "paste" | "markdown_file" | "qmd" | "pdf" | "url"
             "original_filename": str,     # also holds the source URL when source_type == "url"
             "pdf_path": str,
             "folder": str,                # "/"-joined path ("Notes/Work"), None/"" = no folder

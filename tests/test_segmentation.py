@@ -285,3 +285,8 @@ def test_callout_title_is_its_own_segment():
 def test_untitled_callout_is_titled_by_its_type():
     doc = segment_document("> [!tip]\n> Body.")
     assert [s.text for s in doc.segments] == ["Tip", "Body."]
+
+
+def test_image_not_read_as_bang_alt_text():
+    assert strip_markdown("See ![A plot](plot.png) and [a link](x.html).") == "See  and a link."
+    assert segment_document("![A plot](plot.png)").segments == []

@@ -32,7 +32,7 @@ the architecture, `LEARNINGS.md` for the design decisions behind it, and
   (0.5x-2.5x), voice picker
 - Click any sentence to jump playback there; auto-generated table of contents
   from headings, also click-to-jump
-- A persistent library: paste markdown, upload a `.md`/`.txt` file, upload a
+- A persistent library: paste markdown, upload a `.md`/`.qmd`/`.txt` file, upload a
   PDF (converted to markdown via marker-pdf), or add a web page by URL
   (fetched clean via defuddle.md, falling back to Jina AI's reader) --
   everything is saved to a local SQLite database and stays there across

@@ -63,8 +63,10 @@ def strip_markdown(text: str) -> str:
     text = re.sub(r"~~(.+?)~~", r"\1", text)
     text = re.sub(r"==(.+?)==", r"\1", text)
     text = re.sub(r"`(.+?)`", r"\1", text)
-    text = re.sub(r"\[(.+?)\]\(.+?\)", r"\1", text)
+    # Images before links: the link pattern also matches the "[alt](src)"
+    # inside "![alt](src)", which left a stray "!alt" to be read aloud.
     text = re.sub(r"!\[.*?\]\(.+?\)", "", text)
+    text = re.sub(r"\[(.+?)\]\(.+?\)", r"\1", text)
     # These four strip a block-level marker (heading/blockquote/list) only when
     # it's at the very start of the text being processed -- anchored to "^",
     # not a global unanchored match. Unanchored, they'd eat any coincidental

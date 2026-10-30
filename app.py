@@ -24,6 +24,7 @@ import cache
 import components as comp
 import db
 import pdf_ingest
+import qmd_ingest
 import tts
 import update_check
 import url_ingest
@@ -263,6 +264,13 @@ def _create_article_from_upload(filename: str, raw: bytes, *, folder: str | None
             markdown=markdown, source_type="markdown_file", original_filename=filename, folder=folder,
         )
 
+    if suffix == ".qmd":
+        markdown = qmd_ingest.qmd_to_markdown(raw.decode("utf-8", errors="replace"))
+        return db.create_article(
+            DB, title=_title_for(markdown),
+            markdown=markdown, source_type="qmd", original_filename=filename, folder=folder,
+        )
+
     if suffix == ".pdf":
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
             tmp.write(raw)
@@ -344,7 +352,7 @@ async def post_articles_upload_folder(request: Request):
 
     if created == 0:
         return RedirectResponse(
-            f"/add?error={quote('No supported files (.md/.markdown/.txt/.pdf) found in that folder.')}",
+            f"/add?error={quote('No supported files (.md/.markdown/.qmd/.txt/.pdf) found in that folder.')}",
             status_code=303,
         )
     notice = f"Imported {created} article{'s' if created != 1 else ''}"

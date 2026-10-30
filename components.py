@@ -362,7 +362,7 @@ def library_page(
         body = Div(
             P("Your library is empty."),
             A("Add your first article", href="/add", cls="btn btn-primary"),
-            P("Or drop a .md, .txt or .pdf file anywhere on this page.", cls="form-hint"),
+            P("Or drop a .md, .qmd, .txt or .pdf file anywhere on this page.", cls="form-hint"),
             cls="empty-state",
         )
     else:
@@ -647,9 +647,9 @@ def add_article_page(url: str = "", error: str = "", autofetch: bool = False, fo
     )
     upload_form = Form(
         Label(
-            "File (.md, .markdown, .txt, or .pdf)",
+            "File (.md, .markdown, .qmd, .txt, or .pdf)",
             Div(
-                Input(name="file", type="file", accept=".md,.markdown,.txt,.pdf", required=True),
+                Input(name="file", type="file", accept=".md,.markdown,.qmd,.txt,.pdf", required=True),
                 Span("Drop a file here, or tap to browse", cls="file-drop-hint"),
                 Span("", cls="file-drop-name", hidden=True),
                 cls="file-dropzone",
@@ -685,7 +685,7 @@ def add_article_page(url: str = "", error: str = "", autofetch: bool = False, fo
         Button("Upload folder", type="submit", cls="btn btn-primary"),
         P(
             "Subfolders are preserved. Unsupported files (anything but "
-            ".md/.markdown/.txt/.pdf) are skipped.",
+            ".md/.markdown/.qmd/.txt/.pdf) are skipped.",
             cls="form-hint",
         ),
         method="post",

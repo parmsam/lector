@@ -11,6 +11,14 @@ use the section as the GitHub release notes.
 ## [Unreleased]
 
 ### Added
+- Quarto `.qmd` files can be uploaded (single file, folder import or
+  drag-and-drop). They're read like the rendered page, not the source:
+  the YAML front matter is dropped and its `title:` becomes the heading,
+  `#|` chunk options and hidden (`echo: false`) or raw chunks are removed,
+  `::: {.callout-*}` blocks become callouts, other `:::` divs just show
+  their contents, and `{#id}`/`{.class}` attributes and `{{< shortcodes >}}`
+  are removed. `@fig-…`/`@sec-…` cross-references are read as "Figure",
+  "Section" and so on, without numbers.
 - `Start Lector.command` and `Stop Lector.command`: double-click in
   Finder to start or stop the server without opening a terminal yourself.
 - Lector is now MIT licensed (see `LICENSE`).
@@ -38,6 +46,7 @@ use the section as the GitHub release notes.
   and the Python package name matches.
 
 ### Fixed
+- Images (`![alt](src)`) are no longer read aloud as "!alt".
 - Italic text spanning several sentences (`*One. Two.*`) now shows as
   italic instead of plain text with stray asterisks, including web-clipped
   articles whose closing `*` sits on its own line after a line break.
